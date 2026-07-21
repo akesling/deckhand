@@ -62,6 +62,20 @@ pub struct TermBlock {
     pub rows: u16,
     /// Expand to all remaining slide height instead of a fixed row count.
     pub fill: bool,
+    /// A captured "screenshot" of the running command, baked in by
+    /// `deckhand compile --snapshots`. Contexts that can't run PTYs (the
+    /// web presenter) replay it; native presenting ignores it.
+    pub snapshot: Option<TermSnapshot>,
+}
+
+/// A terminal screen capture: raw ANSI bytes (vt100
+/// `contents_formatted`) that replay into any terminal emulator, plus
+/// the geometry they were captured at.
+#[derive(Debug, Clone)]
+pub struct TermSnapshot {
+    pub cols: u16,
+    pub rows: u16,
+    pub data: Vec<u8>,
 }
 
 impl Deck {
@@ -329,9 +343,41 @@ fn parse_segments(
             md.clear();
         }
     };
-    let finish_term = |block: &mut TermBlock, tbody: &str| {
-        let script = tbody.trim();
+    // Body layout: command lines, then optionally a `%%snapshot COLSxROWS`
+    // marker followed by base64-encoded ANSI screen bytes.
+    let finish_term = |block: &mut TermBlock, tbody: &str| -> Result<()> {
+        use base64::Engine as _;
+        let mut command = String::new();
+        let mut dims: Option<(u16, u16)> = None;
+        let mut b64 = String::new();
+        for line in tbody.lines() {
+            if dims.is_none() {
+                if let Some(rest) = line.trim().strip_prefix("%%snapshot") {
+                    let (c, r) = rest
+                        .trim()
+                        .split_once('x')
+                        .context("`%%snapshot` header needs COLSxROWS")?;
+                    dims = Some((
+                        c.trim().parse().context("snapshot cols")?,
+                        r.trim().parse().context("snapshot rows")?,
+                    ));
+                } else {
+                    command.push_str(line);
+                    command.push('\n');
+                }
+            } else {
+                b64.push_str(line.trim());
+            }
+        }
+        let script = command.trim();
         block.command = (!script.is_empty()).then(|| script.to_string());
+        if let Some((cols, rows)) = dims {
+            let data = base64::engine::general_purpose::STANDARD
+                .decode(b64.as_bytes())
+                .context("decoding `%%snapshot` data")?;
+            block.snapshot = Some(TermSnapshot { cols, rows, data });
+        }
+        Ok(())
     };
     let merge_theme = |theme: &mut Option<ThemeConfig>, tbody: &str| -> Result<()> {
         let cfg: ThemeConfig = serde_yaml::from_str(tbody).context("parsing `theme` block")?;
@@ -349,7 +395,7 @@ fn parse_segments(
                 fence = None;
                 match pending.take() {
                     Some(Pending::Term(mut block, tbody)) => {
-                        finish_term(&mut block, &tbody);
+                        finish_term(&mut block, &tbody)?;
                         flush_md(&mut md, &mut segments);
                         segments.push(Segment::Terminal(block));
                     }
@@ -393,6 +439,7 @@ fn parse_segments(
                             command: None,
                             rows: rows.clamp(3, 40),
                             fill,
+                            snapshot: None,
                         },
                         String::new(),
                     ));
@@ -411,7 +458,7 @@ fn parse_segments(
     // Unclosed special fence at end of slide.
     match pending.take() {
         Some(Pending::Term(mut block, tbody)) => {
-            finish_term(&mut block, &tbody);
+            finish_term(&mut block, &tbody)?;
             flush_md(&mut md, &mut segments);
             segments.push(Segment::Terminal(block));
         }
@@ -510,6 +557,30 @@ mod tests {
             }
             _ => panic!("expected terminal segment"),
         }
+    }
+
+    #[test]
+    fn terminal_snapshot_parses() {
+        // "aGk=" is base64 for "hi"
+        let deck = parse(
+            "```terminal rows=4\nhtop\n%%snapshot 80x4\naGk=\n```\n",
+            "t",
+        )
+        .unwrap();
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Terminal(b) => {
+                assert_eq!(b.command.as_deref(), Some("htop"));
+                let snap = b.snapshot.as_ref().unwrap();
+                assert_eq!((snap.cols, snap.rows), (80, 4));
+                assert_eq!(snap.data, b"hi");
+            }
+            _ => panic!("expected terminal"),
+        }
+    }
+
+    #[test]
+    fn bad_snapshot_header_errors() {
+        assert!(parse("```terminal\n%%snapshot nope\n```\n", "t").is_err());
     }
 
     #[test]

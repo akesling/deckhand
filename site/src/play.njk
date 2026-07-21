@@ -31,7 +31,9 @@ with <code>?deck=&lt;url&gt;</code> to deep-link a deck</p>
 <h2>Notes</h2>
 <ul>
   <li>Terminal blocks show as placeholders here — browsers can't spawn
-  PTYs. To run them for real: <code>deckhand &lt;the same url&gt;</code>.</li>
+  PTYs. To run them for real: <code>deckhand &lt;the same url&gt;</code>.
+  If the deck was compiled with <code>deckhand compile --snapshots</code>,
+  you'll see a real capture of each command's output instead.</li>
   <li>Plain URLs need CORS headers to be fetchable from a browser;
   gists and <code>raw.githubusercontent.com</code> links work out of the
   box.</li>

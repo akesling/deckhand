@@ -228,6 +228,31 @@ overrides have no single-file syntax and fall back to what the content
 implies; bare `---`/`--` lines inside slide bodies are rewritten to `***`
 so they don't split slides on re-parse.
 
+### Baking in terminal snapshots
+
+If the deck has terminal blocks, compiling requires an explicit choice
+— because capturing *executes the deck's commands* on your machine, and
+skipping silently would lose their output:
+
+```sh
+deckhand compile deck.json -o talk.md --snapshots      # run + capture
+deckhand compile deck.json -o talk.md --no-snapshots   # placeholders
+# capture knobs: --snapshot-wait-ms 3000 --snapshot-cols 100
+#                --snapshot-root ~/demo
+```
+
+With `--snapshots`, each block runs in a real PTY, output settles, and
+the screen is captured into the compiled file. `--snapshot-root` sets
+the working directory captures run in — handy for controlling what your
+shell prompt shows — and defaults to the deck's directory, matching
+live presenting. Decks without terminal blocks need no flag.
+
+The capture is stored inside the terminal fence as a `%%snapshot
+COLSxROWS` marker plus base64-encoded ANSI — so contexts that can't
+spawn PTYs (the web presenter) replay the real, colored output instead
+of showing a placeholder. Native presenting always runs the command
+live and ignores snapshots.
+
 ## Theming
 
 Layout, borders, and colors are configurable. Three sources, merged field
@@ -260,6 +285,7 @@ by field (each later one wins):
   "accent": "magenta",
   "muted": 244,
   "term_border": "gray",
+  "snapshot_border": "yellow",
   "status_bg": "#3a3a3a",
   "status_fg": 250,
   "h1": "yellow",
@@ -274,7 +300,9 @@ by field (each later one wins):
 ```
 
 Every field is optional. Colors take a name (`"cyan"`, `"light-blue"`),
-hex (`"#rrggbb"`), or a 0-255 palette index. `border_type` is `plain`,
+hex (`"#rrggbb"`), or a 0-255 palette index. `snapshot_border` styles
+terminals that are showing a baked-in snapshot, superseding
+`term_border` for those (unset = same as `term_border`). `border_type` is `plain`,
 `rounded`, `double`, or `thick`; `vertical_align` is `center` or `top`;
 `max_width`/`margin` are in terminal columns and `max_height` in rows
 (default unlimited — it caps the content box, including fill terminals,

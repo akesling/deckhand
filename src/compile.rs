@@ -13,16 +13,61 @@ use anyhow::{Context, Result};
 
 use crate::deck::{self, Deck, Segment};
 
-/// CLI entry point; native-only because it can load remote decks.
+/// CLI entry point; native-only because it can load remote decks and
+/// capture snapshots.
+///
+/// `snapshots`: `Some(true)` captures, `Some(false)` skips, and `None`
+/// means the user didn't choose — an error if the deck has terminal
+/// blocks, since capturing would run their commands and skipping would
+/// silently lose the output.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run(input: &str, output: Option<&std::path::Path>) -> Result<()> {
+pub fn run(
+    input: &str,
+    output: Option<&std::path::Path>,
+    snapshots: Option<bool>,
+    snapshot_opts: crate::snapshot::Options,
+) -> Result<()> {
     use crate::source;
 
     let source::Loaded {
-        deck,
+        mut deck,
         theme: deck_theme,
-        ..
+        base_dir,
     } = source::load(input)?;
+
+    let commands: Vec<String> = deck
+        .columns
+        .iter()
+        .flat_map(|c| &c.slides)
+        .flat_map(|s| &s.segments)
+        .filter_map(|seg| match seg {
+            Segment::Terminal(b) => Some(
+                b.command
+                    .as_deref()
+                    .and_then(|c| c.lines().next())
+                    .unwrap_or("shell")
+                    .to_string(),
+            ),
+            _ => None,
+        })
+        .collect();
+    if !commands.is_empty() {
+        match snapshots {
+            Some(true) => {
+                crate::snapshot::capture(&mut deck, &base_dir, &snapshot_opts)
+                    .context("capturing terminal snapshots")?;
+            }
+            Some(false) => {}
+            None => anyhow::bail!(
+                "this deck has {} terminal block(s): {}\n\
+                 capturing snapshots runs those commands in PTYs on this machine.\n\
+                 pass --snapshots to capture their output (only for decks you trust),\n\
+                 or --no-snapshots to compile without captures",
+                commands.len(),
+                commands.join(", "),
+            ),
+        }
+    }
 
     let (body, rewrites) = compile(&deck)?;
     if rewrites > 0 {
@@ -86,6 +131,15 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
                         if let Some(cmd) = &block.command {
                             out.push_str(cmd);
                             out.push('\n');
+                        }
+                        if let Some(snap) = &block.snapshot {
+                            use base64::Engine as _;
+                            out.push_str(&format!("%%snapshot {}x{}\n", snap.cols, snap.rows));
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&snap.data);
+                            for chunk in b64.as_bytes().chunks(76) {
+                                out.push_str(std::str::from_utf8(chunk).expect("base64 is ascii"));
+                                out.push('\n');
+                            }
                         }
                         out.push_str("```\n\n");
                     }
@@ -222,7 +276,13 @@ mod tests {
         )
         .unwrap();
         let out = dir.join("out.md");
-        run(dir.join("deck.json").to_str().unwrap(), Some(&out)).unwrap();
+        run(
+            dir.join("deck.json").to_str().unwrap(),
+            Some(&out),
+            None,
+            crate::snapshot::Options::default(),
+        )
+        .unwrap();
 
         let (deck, theme) = deck::load(&out).unwrap();
         assert_eq!(deck.title, "fancy talk");
@@ -230,6 +290,52 @@ mod tests {
         assert_eq!(theme.border_type.as_deref(), Some("rounded"));
         assert_eq!(deck.columns.len(), 1);
         assert_eq!(deck.slide(0, 0).title, "alpha");
+    }
+
+    #[test]
+    fn terminal_decks_require_a_snapshot_choice() {
+        let dir = scratch("compile-choice");
+        std::fs::write(dir.join("deck.md"), "# a\n```terminal\nhtop\n```\n").unwrap();
+        let path = dir.join("deck.md");
+        let path = path.to_str().unwrap();
+        let out = dir.join("out.md");
+        let opts = || crate::snapshot::Options::default();
+
+        // No choice: refuse, and name the commands that would run.
+        let err = run(path, Some(&out), None, opts()).unwrap_err();
+        assert!(format!("{err:#}").contains("htop"));
+
+        // Explicit opt-out compiles without captures.
+        run(path, Some(&out), Some(false), opts()).unwrap();
+        let md = std::fs::read_to_string(&out).unwrap();
+        assert!(md.contains("```terminal"));
+        assert!(!md.contains("%%snapshot"));
+    }
+
+    #[test]
+    fn snapshots_round_trip() {
+        use crate::deck::TermSnapshot;
+        let mut deck = deck::parse("```terminal rows=4\nhtop\n```\n", "t").unwrap();
+        let Segment::Terminal(block) = &mut deck.columns[0].slides[0].segments[0] else {
+            panic!("expected terminal");
+        };
+        block.snapshot = Some(TermSnapshot {
+            cols: 40,
+            rows: 4,
+            data: b"\x1b[1;1Hhello \x1b[31mred\x1b[0m".to_vec(),
+        });
+
+        let (md, _) = compile(&deck).unwrap();
+        assert!(md.contains("%%snapshot 40x4"));
+
+        let reparsed = deck::parse(&md, "t").unwrap();
+        let Segment::Terminal(block) = &reparsed.slide(0, 0).segments[0] else {
+            panic!("expected terminal");
+        };
+        assert_eq!(block.command.as_deref(), Some("htop"));
+        let snap = block.snapshot.as_ref().unwrap();
+        assert_eq!((snap.cols, snap.rows), (40, 4));
+        assert_eq!(snap.data, b"\x1b[1;1Hhello \x1b[31mred\x1b[0m");
     }
 
     #[test]
@@ -246,6 +352,7 @@ mod tests {
                             command: None,
                             rows: 8,
                             fill: false,
+                            snapshot: None,
                         }),
                     ],
                     notes: String::new(),

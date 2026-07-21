@@ -23,6 +23,8 @@ pub mod present;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod snapshot;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod source;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod term;

@@ -1,7 +1,7 @@
 //! wasm-bindgen front end for the website's in-browser presenter.
 //!
 //! Wraps the shared [`crate::presenter::Presenter`] with a
-//! [`PlaceholderProvider`] (browsers can't spawn PTYs), translates DOM
+//! [`SnapshotProvider`] (browsers can't spawn PTYs), translates DOM
 //! key names, and serializes each frame to ANSI for xterm.js.
 
 use std::collections::HashMap;
@@ -21,18 +21,38 @@ use crate::deck::{self, TermBlock};
 use crate::presenter::{Key, KeyPress, Presenter, TermState, TerminalProvider};
 use crate::{compile, config};
 
-/// Browsers can't spawn PTYs; terminal blocks render as an honest
-/// placeholder and can't be focused.
-struct PlaceholderProvider;
+/// Browsers can't spawn PTYs. Blocks with a baked-in snapshot (from
+/// `deckhand compile --snapshots`) replay it through the same vt100 →
+/// tui-term path the native presenter uses; the rest get an honest
+/// placeholder. Neither can be focused.
+#[derive(Default)]
+struct SnapshotProvider {
+    parsers: HashMap<usize, vt100::Parser>,
+}
 
-impl TerminalProvider for PlaceholderProvider {
-    fn prepare(&mut self, _: &TermBlock, _: u16, _: u16) {}
-
-    fn state(&self, _: &TermBlock) -> TermState {
-        TermState::Unavailable
+impl TerminalProvider for SnapshotProvider {
+    fn prepare(&mut self, block: &TermBlock, _cols: u16, _rows: u16) {
+        let Some(snap) = &block.snapshot else { return };
+        self.parsers.entry(block.id).or_insert_with(|| {
+            let mut parser = vt100::Parser::new(snap.rows, snap.cols, 0);
+            parser.process(&snap.data);
+            parser
+        });
     }
 
-    fn draw(&mut self, _: &TermBlock, inner: Rect, buf: &mut Buffer) {
+    fn state(&self, block: &TermBlock) -> TermState {
+        if block.snapshot.is_some() {
+            TermState::Snapshot
+        } else {
+            TermState::Unavailable
+        }
+    }
+
+    fn draw(&mut self, block: &TermBlock, inner: Rect, buf: &mut Buffer) {
+        if let Some(parser) = self.parsers.get(&block.id) {
+            tui_term::widget::PseudoTerminal::new(parser.screen()).render(inner, buf);
+            return;
+        }
         let muted = Style::default().fg(Color::Indexed(244));
         let msg = vec![
             Line::default(),
@@ -60,7 +80,7 @@ fn err(e: anyhow::Error) -> JsError {
 
 #[wasm_bindgen]
 pub struct WebDeck {
-    presenter: Presenter<PlaceholderProvider>,
+    presenter: Presenter<SnapshotProvider>,
     cols: u16,
     rows: u16,
 }
@@ -76,8 +96,12 @@ impl WebDeck {
         rows: u16,
     ) -> Result<WebDeck, JsError> {
         let (deck, theme) = deck::parse_full(source, fallback_title).map_err(err)?;
-        let presenter =
-            Presenter::new(deck, theme.into_iter().collect(), PlaceholderProvider).map_err(err)?;
+        let presenter = Presenter::new(
+            deck,
+            theme.into_iter().collect(),
+            SnapshotProvider::default(),
+        )
+        .map_err(err)?;
         Ok(WebDeck {
             presenter,
             cols: cols.max(20),
@@ -113,8 +137,12 @@ impl WebDeck {
             let fallback = entry.trim_end_matches(".md");
             deck::parse_full(&entry_src, fallback).map_err(err)?
         };
-        let presenter =
-            Presenter::new(deck, theme.into_iter().collect(), PlaceholderProvider).map_err(err)?;
+        let presenter = Presenter::new(
+            deck,
+            theme.into_iter().collect(),
+            SnapshotProvider::default(),
+        )
+        .map_err(err)?;
         Ok(WebDeck {
             presenter,
             cols: cols.max(20),

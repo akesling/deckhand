@@ -8,16 +8,20 @@ license = "MIT"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Portable core: parsing, markdown rendering, theming. Compiles for
-# native and wasm32 (the browser build on the website).
+# Portable core: parsing, markdown rendering, theming, terminal
+# emulation for snapshot replay. Compiles for native and wasm32 (the
+# browser build on the website).
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 pulldown-cmark = { version = "0.12", default-features = false }
 ratatui = { version = "0.29", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
+tui-term = "0.2"
 unicode-width = "0.2"
+vt100 = "0.15"
 
 # Native-only: the terminal UI, PTYs, notes socket, HTTP fetching, CLI.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -26,8 +30,6 @@ portable-pty = "0.8"
 ratatui = { version = "0.29", default-features = false, features = ["crossterm", "underline-color"] }
 reqwest = "0.12"
 tokio = { version = "1", features = ["rt"] }
-tui-term = "0.2"
-vt100 = "0.15"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

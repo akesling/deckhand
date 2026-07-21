@@ -153,6 +153,7 @@ All fields, all optional:
   "accent": "magenta",
   "muted": 244,
   "term_border": "gray",
+  "snapshot_border": "yellow",
   "status_bg": "#3a3a3a",
   "status_fg": 250,
   "h1": "yellow",
@@ -167,7 +168,10 @@ All fields, all optional:
 ```
 
 Colors take a name (`"cyan"`, `"light-blue"`), hex (`"#rrggbb"`), or a
-0–255 palette index. `border_type` is `plain`, `rounded`, `double`, or
+0–255 palette index. `snapshot_border` styles terminals showing a
+baked-in snapshot, superseding `term_border` for those — set it in a
+slide's `theme` fence to mark that slide's captures distinctly; unset,
+snapshots use `term_border` like any terminal. `border_type` is `plain`, `rounded`, `double`, or
 `thick`; `vertical_align` is `center` or `top`. `max_width` / `margin`
 are terminal columns; `max_height` is rows and caps the content box —
 including fill terminals.
@@ -249,6 +253,25 @@ The deck title and deck theme are preserved as frontmatter, per-slide
 themes as `theme` fences. Only per-slide `title` overrides have no
 single-file syntax; bare `---`/`--` lines inside slide bodies are
 rewritten to `***` so they can't split slides on re-parse.
+
+### Snapshots: real terminal output on the web
+
+If a deck has terminal blocks, compiling requires choosing
+`--snapshots` or `--no-snapshots` — capturing *executes the deck's
+commands* on your machine, so deckhand won't guess. With `--snapshots`,
+each block runs in a real PTY, output settles
+(`--snapshot-wait-ms`, default 1500), and the screen is captured into
+the compiled file at `--snapshot-cols` width (default 80).
+`--snapshot-root` picks the working directory captures run in — it
+controls what shell prompts display — defaulting to the deck's
+directory. The capture lives inside the terminal fence as a
+`%%snapshot COLSxROWS` marker plus base64-encoded ANSI.
+
+Contexts that can't spawn PTYs — this site's presenter, the
+[playground](/playground/), [play](/play/) — replay the capture through
+the same terminal emulator the native TUI uses, colors and all, marked
+with a `snapshot` hint on the border. Presenting natively always runs
+the command live and ignores the snapshot.
 
 ## Architecture: presenters and providers
 

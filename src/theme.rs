@@ -80,6 +80,10 @@ pub struct ThemeConfig {
     /// Unfocused terminal borders.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub term_border: Option<ColorSpec>,
+    /// Borders of terminals showing a baked-in snapshot; supersedes
+    /// `term_border` for those (unset = inherit `term_border`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_border: Option<ColorSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_bg: Option<ColorSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +118,7 @@ impl ThemeConfig {
             accent: over.accent.or(self.accent),
             muted: over.muted.or(self.muted),
             term_border: over.term_border.or(self.term_border),
+            snapshot_border: over.snapshot_border.or(self.snapshot_border),
             status_bg: over.status_bg.or(self.status_bg),
             status_fg: over.status_fg.or(self.status_fg),
             h1: over.h1.or(self.h1),
@@ -144,6 +149,9 @@ pub struct Theme {
     pub accent: Color,
     pub muted: Color,
     pub term_border: Color,
+    /// `None` inherits `term_border`; presenters resolve via
+    /// [`Theme::snapshot_border`].
+    pub snapshot_border: Option<Color>,
     pub status_bg: Color,
     pub status_fg: Color,
     pub h1: Color,
@@ -170,6 +178,7 @@ impl Default for Theme {
             // DarkGray into near-background (invisible borders).
             muted: Color::Indexed(244),
             term_border: Color::Indexed(244),
+            snapshot_border: None,
             status_bg: Color::Indexed(236),
             status_fg: Color::Indexed(250),
             h1: Color::Cyan,
@@ -185,6 +194,12 @@ impl Default for Theme {
 }
 
 impl Theme {
+    /// Border color for a snapshot-rendered terminal: its own setting,
+    /// or the live-terminal default.
+    pub fn snapshot_border(&self) -> Color {
+        self.snapshot_border.unwrap_or(self.term_border)
+    }
+
     /// Merge configs (lowest precedence first) over the defaults.
     pub fn resolve(configs: Vec<ThemeConfig>) -> Result<Theme> {
         let cfg = configs
@@ -232,6 +247,9 @@ impl Theme {
         color!(accent);
         color!(muted);
         color!(term_border);
+        if let Some(c) = &cfg.snapshot_border {
+            t.snapshot_border = Some(c.to_color().context("theme.snapshot_border")?);
+        }
         color!(status_bg);
         color!(status_fg);
         color!(h1);
@@ -309,6 +327,20 @@ mod tests {
         assert_eq!(t.h1, Color::Rgb(255, 136, 0));
         assert_eq!(t.code_bg, Color::Indexed(17));
         assert_eq!(t.bullet, Color::LightGreen);
+    }
+
+    #[test]
+    fn snapshot_border_supersedes_term_border() {
+        // Unset: inherits the live-terminal border.
+        let t = Theme::resolve(vec![]).unwrap();
+        assert_eq!(t.snapshot_border(), t.term_border);
+
+        let cfg: ThemeConfig =
+            serde_json::from_str(r#"{ "term_border": "blue", "snapshot_border": "yellow" }"#)
+                .unwrap();
+        let t = Theme::resolve(vec![cfg]).unwrap();
+        assert_eq!(t.term_border, Color::Blue);
+        assert_eq!(t.snapshot_border(), Color::Yellow);
     }
 
     #[test]

@@ -293,6 +293,7 @@ name = "deckhand"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "portable-pty",
  "pulldown-cmark",

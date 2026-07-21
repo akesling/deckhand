@@ -166,6 +166,9 @@ pub enum TermState {
     },
     Exited,
     Failed(String),
+    /// This context can't run terminals but is showing a capture baked
+    /// in by `deckhand compile --snapshots`.
+    Snapshot,
     /// This context can't run terminals (e.g. the browser).
     Unavailable,
 }
@@ -708,6 +711,7 @@ impl<P: TerminalProvider> Presenter<P> {
         let hint = match &state {
             TermState::Failed(_) => "spawn failed".to_string(),
             TermState::Exited => "exited · R restarts".to_string(),
+            TermState::Snapshot => "snapshot · runs live in the real TUI".to_string(),
             TermState::Unavailable => "runs live in the real TUI".to_string(),
             TermState::Running { scroll_offset, .. } if *scroll_offset > 0 => {
                 format!("history -{scroll_offset} · shift-pgdn returns")
@@ -721,6 +725,8 @@ impl<P: TerminalProvider> Presenter<P> {
 
         let border_style = if focused {
             Style::default().fg(theme.accent)
+        } else if state == TermState::Snapshot {
+            Style::default().fg(theme.snapshot_border())
         } else {
             Style::default().fg(theme.term_border)
         };

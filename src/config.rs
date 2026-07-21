@@ -239,6 +239,7 @@ fn term_segment(term: &TermConfig, next_term_id: &mut usize) -> Segment {
         command: term.command.clone(),
         rows: term.rows.unwrap_or(12).clamp(3, 40),
         fill: term.rows.is_none(),
+        snapshot: None,
     })
 }
 
