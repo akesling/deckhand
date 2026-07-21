@@ -1,0 +1,39 @@
+{
+  "title": "deckhand json demo",
+  "theme": {
+    "border_type": "rounded",
+    "accent": "magenta",
+    "h1": "magenta",
+    "bullet": "magenta",
+    "max_width": 84
+  },
+  "columns": [
+    "slides/intro.md",
+    [
+      "slides/layout.md",
+      { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }
+    ],
+    [
+      {
+        "terminal": { "command": "htop" },
+        "title": "htop",
+        "theme": { "margin": 0, "max_width": 500, "accent": "red" },
+        "notes": "This whole slide is one PTY, full-bleed via a per-slide theme. q quits htop, R respawns it."
+      },
+      { "terminal": {},
+
+        "theme": { "margin": 0, "max_height": 20, "max_width": 100, "accent": "red" },
+          "title": "scratch shell" },
+      {
+        "panes": [
+          "slides/panes.md",
+          { "terminal": { "command": "python3 -q", "rows": 8 } },
+          { "terminal": {} }
+        ],
+        "title": "stacked panes",
+        "notes": "Two terminals stacked: a fixed-height python REPL and a fill shell below it. t cycles focus."
+      }
+    ],
+    { "file": "slides/fin.md", "notes_file": "slides/fin-notes.md" }
+  ]
+}

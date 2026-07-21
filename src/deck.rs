@@ -1,0 +1,431 @@
+//! Deck parsing.
+//!
+//! A deck is a single markdown file with two axes:
+//!   `---` on its own line starts a new column (earlier/later)
+//!   `--`  on its own line starts a deeper slide within the current column
+//!
+//! Within a slide:
+//!   a line containing only `???` splits content from presenter notes
+//!   a fenced code block whose info string starts with `terminal` becomes an
+//!   embedded interactive PTY, e.g.:
+//!
+//!   ```terminal rows=12
+//!   python3 -q
+//!   ```
+//!
+//!   An empty body spawns an interactive shell ($SHELL).
+
+use std::path::Path;
+
+use anyhow::{Context, Result};
+
+#[derive(Debug)]
+pub struct Deck {
+    pub title: String,
+    pub columns: Vec<Column>,
+}
+
+#[derive(Debug)]
+pub struct Column {
+    pub slides: Vec<Slide>,
+}
+
+#[derive(Debug)]
+pub struct Slide {
+    pub title: String,
+    pub segments: Vec<Segment>,
+    pub notes: String,
+    /// Per-slide theme overrides (JSON manifests only), layered over the
+    /// deck/user theme when this slide is displayed.
+    pub theme: Option<crate::theme::ThemeConfig>,
+}
+
+#[derive(Debug)]
+pub enum Segment {
+    Markdown(String),
+    Terminal(TermBlock),
+}
+
+#[derive(Debug, Clone)]
+pub struct TermBlock {
+    /// Globally unique across the deck; keys the live PTY session.
+    pub id: usize,
+    /// Script run via `$SHELL -c`; `None` spawns an interactive shell.
+    pub command: Option<String>,
+    /// Inner height of the terminal viewport (ignored when `fill` is set).
+    pub rows: u16,
+    /// Expand to all remaining slide height instead of a fixed row count.
+    pub fill: bool,
+}
+
+impl Deck {
+    pub fn slide(&self, col: usize, row: usize) -> &Slide {
+        &self.columns[col].slides[row]
+    }
+
+    /// Depth-first traversal order: all slides of column 0 top-to-bottom,
+    /// then column 1, etc. This is the order `space` walks through.
+    pub fn flat(&self) -> Vec<(usize, usize)> {
+        let mut out = Vec::new();
+        for (c, col) in self.columns.iter().enumerate() {
+            for r in 0..col.slides.len() {
+                out.push((c, r));
+            }
+        }
+        out
+    }
+}
+
+impl Slide {
+    pub fn term_ids(&self) -> Vec<usize> {
+        self.segments
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Terminal(b) => Some(b.id),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// Load a deck plus, for JSON manifests, its embedded theme config.
+pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
+    if path.extension().and_then(|e| e.to_str()) == Some("json") {
+        return crate::config::load(path);
+    }
+    let source = std::fs::read_to_string(path)
+        .with_context(|| format!("reading deck file {}", path.display()))?;
+    let fallback = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "deck".to_string());
+    let deck = parse(&source, &fallback);
+    if deck.columns.is_empty() {
+        anyhow::bail!("deck {} contains no slides", path.display());
+    }
+    Ok((deck, None))
+}
+
+pub fn parse(source: &str, title: &str) -> Deck {
+    let mut next_term_id = 0usize;
+    let columns: Vec<Column> = split_source(source)
+        .into_iter()
+        .enumerate()
+        .map(|(c, sources)| Column {
+            slides: sources
+                .into_iter()
+                .enumerate()
+                .map(|(r, src)| parse_slide(&src, c, r, &mut next_term_id))
+                .collect(),
+        })
+        .collect();
+    Deck {
+        title: title.to_string(),
+        columns,
+    }
+}
+
+/// Fence state: `Some((char, len))` while inside a fenced code block.
+pub(crate) type Fence = Option<(char, usize)>;
+
+pub(crate) fn opens_fence(trimmed: &str) -> Fence {
+    let ch = trimmed.chars().next()?;
+    if ch != '`' && ch != '~' {
+        return None;
+    }
+    let n = trimmed.chars().take_while(|c| *c == ch).count();
+    if n >= 3 { Some((ch, n)) } else { None }
+}
+
+pub(crate) fn closes_fence(trimmed: &str, ch: char, len: usize) -> bool {
+    !trimmed.is_empty() && trimmed.chars().all(|c| c == ch) && trimmed.chars().count() >= len
+}
+
+/// Split the raw file into columns of slide sources, respecting code fences
+/// so a `---` inside a code block never splits a slide.
+fn split_source(source: &str) -> Vec<Vec<String>> {
+    let mut columns: Vec<Vec<String>> = Vec::new();
+    let mut column: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut fence: Fence = None;
+
+    for line in source.lines() {
+        let t = line.trim();
+        if let Some((ch, n)) = fence {
+            cur.push_str(line);
+            cur.push('\n');
+            if closes_fence(t, ch, n) {
+                fence = None;
+            }
+            continue;
+        }
+        if let Some(f) = opens_fence(t) {
+            fence = Some(f);
+            cur.push_str(line);
+            cur.push('\n');
+            continue;
+        }
+        if t.len() >= 2 && t.chars().all(|c| c == '-') {
+            column.push(std::mem::take(&mut cur));
+            if t.len() >= 3 {
+                columns.push(std::mem::take(&mut column));
+            }
+            continue;
+        }
+        cur.push_str(line);
+        cur.push('\n');
+    }
+    column.push(cur);
+    columns.push(column);
+
+    columns
+        .into_iter()
+        .map(|col| {
+            col.into_iter()
+                .filter(|s| !s.trim().is_empty())
+                .collect::<Vec<_>>()
+        })
+        .filter(|col| !col.is_empty())
+        .collect()
+}
+
+/// Parse one slide's markdown source: split off `???` notes, extract
+/// `terminal` blocks, pick a title. Used for slices of a single-file deck
+/// and for whole per-slide files referenced from a JSON manifest.
+pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) -> Slide {
+    // Split off presenter notes at a bare `???` line (outside fences).
+    let mut body = String::new();
+    let mut notes = String::new();
+    let mut in_notes = false;
+    let mut fence: Fence = None;
+    for line in src.lines() {
+        let t = line.trim();
+        match fence {
+            Some((ch, n)) => {
+                if closes_fence(t, ch, n) {
+                    fence = None;
+                }
+            }
+            None => {
+                if let Some(f) = opens_fence(t) {
+                    fence = Some(f);
+                } else if t == "???" && !in_notes {
+                    in_notes = true;
+                    continue;
+                }
+            }
+        }
+        let target = if in_notes { &mut notes } else { &mut body };
+        target.push_str(line);
+        target.push('\n');
+    }
+
+    let segments = parse_segments(&body, next_term_id);
+    let title = extract_title(&body).unwrap_or_else(|| format!("{}.{}", col + 1, row + 1));
+
+    Slide {
+        title,
+        segments,
+        notes: notes.trim().to_string(),
+        theme: None,
+    }
+}
+
+fn parse_segments(body: &str, next_term_id: &mut usize) -> Vec<Segment> {
+    let mut segments = Vec::new();
+    let mut md = String::new();
+    let mut fence: Fence = None;
+    let mut term: Option<(TermBlock, String)> = None; // block being collected + its body
+
+    let flush_md = |md: &mut String, segments: &mut Vec<Segment>| {
+        if !md.trim().is_empty() {
+            segments.push(Segment::Markdown(std::mem::take(md)));
+        } else {
+            md.clear();
+        }
+    };
+
+    for line in body.lines() {
+        let t = line.trim();
+        if let Some((ch, n)) = fence {
+            if closes_fence(t, ch, n) {
+                fence = None;
+                if let Some((mut block, tbody)) = term.take() {
+                    let script = tbody.trim();
+                    block.command = if script.is_empty() {
+                        None
+                    } else {
+                        Some(script.to_string())
+                    };
+                    flush_md(&mut md, &mut segments);
+                    segments.push(Segment::Terminal(block));
+                } else {
+                    md.push_str(line);
+                    md.push('\n');
+                }
+            } else if let Some((_, tbody)) = term.as_mut() {
+                tbody.push_str(line);
+                tbody.push('\n');
+            } else {
+                md.push_str(line);
+                md.push('\n');
+            }
+            continue;
+        }
+        if let Some(f) = opens_fence(t) {
+            fence = Some(f);
+            let info = t.trim_start_matches(['`', '~']).trim();
+            let mut words = info.split_whitespace();
+            if words.next() == Some("terminal") {
+                let mut rows: u16 = 12;
+                let mut fill = false;
+                for w in words {
+                    if let Some(v) = w.strip_prefix("rows=") {
+                        if v == "fill" {
+                            fill = true;
+                        } else {
+                            rows = v.parse().unwrap_or(12);
+                        }
+                    }
+                }
+                let id = *next_term_id;
+                *next_term_id += 1;
+                term = Some((
+                    TermBlock {
+                        id,
+                        command: None,
+                        rows: rows.clamp(3, 40),
+                        fill,
+                    },
+                    String::new(),
+                ));
+            } else {
+                md.push_str(line);
+                md.push('\n');
+            }
+            continue;
+        }
+        md.push_str(line);
+        md.push('\n');
+    }
+    // Unclosed terminal fence: treat collected body as the command.
+    if let Some((mut block, tbody)) = term.take() {
+        let script = tbody.trim();
+        block.command = if script.is_empty() {
+            None
+        } else {
+            Some(script.to_string())
+        };
+        flush_md(&mut md, &mut segments);
+        segments.push(Segment::Terminal(block));
+    }
+    flush_md(&mut md, &mut segments);
+    segments
+}
+
+fn extract_title(body: &str) -> Option<String> {
+    let mut fence: Fence = None;
+    let mut first_text: Option<String> = None;
+    for line in body.lines() {
+        let t = line.trim();
+        if let Some((ch, n)) = fence {
+            if closes_fence(t, ch, n) {
+                fence = None;
+            }
+            continue;
+        }
+        if let Some(f) = opens_fence(t) {
+            fence = Some(f);
+            continue;
+        }
+        if t.starts_with('#') {
+            let title = t.trim_start_matches('#').trim();
+            if !title.is_empty() {
+                return Some(title.to_string());
+            }
+        }
+        if first_text.is_none() && !t.is_empty() {
+            let cleaned: String = t
+                .trim_start_matches(['>', '-', '*', ' '])
+                .chars()
+                .take(48)
+                .collect();
+            if !cleaned.is_empty() {
+                first_text = Some(cleaned);
+            }
+        }
+    }
+    first_text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn columns_and_depth() {
+        let deck = parse("# a\n---\n# b\n--\n# b2\n---\n# c\n", "t");
+        assert_eq!(deck.columns.len(), 3);
+        assert_eq!(deck.columns[0].slides.len(), 1);
+        assert_eq!(deck.columns[1].slides.len(), 2);
+        assert_eq!(deck.columns[1].slides[1].title, "b2");
+        assert_eq!(deck.flat().len(), 4);
+    }
+
+    #[test]
+    fn separators_inside_fences_are_ignored() {
+        let deck = parse("# one\n```\n---\n--\n```\nafter\n", "t");
+        assert_eq!(deck.columns.len(), 1);
+        assert_eq!(deck.columns[0].slides.len(), 1);
+        // fence content preserved in the markdown segment
+        match &deck.columns[0].slides[0].segments[0] {
+            Segment::Markdown(md) => assert!(md.contains("---")),
+            _ => panic!("expected markdown segment"),
+        }
+    }
+
+    #[test]
+    fn notes_split() {
+        let deck = parse("# a\nvisible\n???\nsecret note\nmore\n", "t");
+        let slide = deck.slide(0, 0);
+        assert_eq!(slide.notes, "secret note\nmore");
+        match &slide.segments[0] {
+            Segment::Markdown(md) => {
+                assert!(md.contains("visible"));
+                assert!(!md.contains("secret"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn terminal_block() {
+        let deck = parse("# a\nbefore\n```terminal rows=8\nhtop\n```\nafter\n", "t");
+        let slide = deck.slide(0, 0);
+        assert_eq!(slide.segments.len(), 3);
+        match &slide.segments[1] {
+            Segment::Terminal(b) => {
+                assert_eq!(b.command.as_deref(), Some("htop"));
+                assert_eq!(b.rows, 8);
+                assert_eq!(b.id, 0);
+            }
+            _ => panic!("expected terminal segment"),
+        }
+    }
+
+    #[test]
+    fn empty_terminal_block_is_shell() {
+        let deck = parse("```terminal\n```\n", "t");
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Terminal(b) => assert!(b.command.is_none()),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn term_ids_are_global() {
+        let deck = parse("```terminal\n```\n---\n```terminal\n```\n", "t");
+        assert_eq!(deck.slide(0, 0).term_ids(), vec![0]);
+        assert_eq!(deck.slide(1, 0).term_ids(), vec![1]);
+    }
+}
