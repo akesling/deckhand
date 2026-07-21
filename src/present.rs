@@ -304,6 +304,7 @@ impl App {
             }
             KeyCode::Down | KeyCode::Char('j') => self.goto(self.col, self.row + 1),
             KeyCode::Up | KeyCode::Char('k') => self.goto(self.col, self.row.saturating_sub(1)),
+            KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::SHIFT) => self.prev(),
             KeyCode::Char(' ') | KeyCode::Char('n') | KeyCode::PageDown => self.next(),
             KeyCode::Backspace | KeyCode::Char('p') | KeyCode::PageUp => self.prev(),
             KeyCode::Char('g') | KeyCode::Home => self.goto(0, 0),
@@ -830,7 +831,7 @@ impl App {
             row("←/h  →/l", "previous / next column"),
             row("↓/j  ↑/k", "deeper / shallower"),
             row("space, n", "next slide (depth-first)"),
-            row("bksp, p", "previous slide"),
+            row("shift-space", "previous slide (also bksp, p)"),
             row("g / G", "first / last column"),
             Line::default(),
             Line::from(Span::styled(" terminals", dim)),

@@ -166,7 +166,7 @@ For bigger talks, point deckhand at a manifest instead:
 | `←`/`h`, `→`/`l` | previous / next column |
 | `↓`/`j`, `↑`/`k` | deeper / shallower |
 | `space`, `n` | next slide (walks every column depth-first) |
-| `backspace`, `p` | previous slide |
+| `shift-space`, `backspace`, `p` | previous slide |
 | `g`, `G` | first / last column |
 | `o` | overview grid — each slide shows a short code; type it to jump (or `hjkl` + `enter`, or click) |
 | `1`-`9` | select a terminal pane (marked with `▸`) |
