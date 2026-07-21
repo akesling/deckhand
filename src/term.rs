@@ -15,8 +15,12 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 /// Lines of history kept per terminal for scrollback viewing.
 const SCROLLBACK_LINES: usize = 10_000;
 
+/// One live PTY session: a child process, its master side, and a vt100
+/// emulator fed by a background reader thread.
 pub struct TermSession {
+    /// The terminal emulator; lock it and render `screen()` to display.
     pub parser: Arc<Mutex<vt100::Parser>>,
+    /// Set by the reader thread when the child's output stream closes.
     pub exited: Arc<AtomicBool>,
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty>,
@@ -26,6 +30,8 @@ pub struct TermSession {
 }
 
 impl TermSession {
+    /// Spawn `command` via `$SHELL -c` (or an interactive `$SHELL` when
+    /// `None`) on a fresh PTY of the given size, in `cwd`.
     pub fn spawn(command: Option<&str>, rows: u16, cols: u16, cwd: &Path) -> Result<Self> {
         let pty = native_pty_system();
         let pair = pty.openpty(PtySize {
@@ -84,10 +90,12 @@ impl TermSession {
         })
     }
 
+    /// Whether the child's output stream has closed.
     pub fn exited(&self) -> bool {
         self.exited.load(Ordering::SeqCst)
     }
 
+    /// Send bytes to the child's stdin; also snaps scrollback to live.
     pub fn write_input(&mut self, bytes: &[u8]) {
         // Typing jumps back to the live view, like a normal terminal.
         {
@@ -108,6 +116,7 @@ impl TermSession {
         p.set_scrollback(new);
     }
 
+    /// Scroll the view by half the viewport height.
     pub fn scroll_page(&mut self, up: bool) {
         let half = (self.rows / 2).max(1) as isize;
         self.scroll_lines(if up { half } else { -half });
@@ -130,6 +139,7 @@ impl TermSession {
         (cur, avail)
     }
 
+    /// Resize the PTY and emulator together; no-op if unchanged.
     pub fn resize(&mut self, rows: u16, cols: u16) {
         if rows == self.rows && cols == self.cols {
             return;
@@ -145,6 +155,7 @@ impl TermSession {
         self.parser.lock().unwrap().set_size(rows, cols);
     }
 
+    /// Kill the child process and reap it.
     pub fn kill(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();

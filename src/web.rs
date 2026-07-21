@@ -78,6 +78,9 @@ fn err(e: anyhow::Error) -> JsError {
     JsError::new(&format!("{e:#}"))
 }
 
+/// A deck being presented in the browser: the JS-facing handle around
+/// the shared [`Presenter`]. Feed it DOM key events via [`WebDeck::key`]
+/// and write [`WebDeck::render`]'s ANSI output into xterm.js.
 #[wasm_bindgen]
 pub struct WebDeck {
     presenter: Presenter<SnapshotProvider>,
@@ -150,6 +153,7 @@ impl WebDeck {
         })
     }
 
+    /// Match the render size to the hosting xterm.js grid.
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.cols = cols.max(20);
         self.rows = rows.max(4);
@@ -181,22 +185,27 @@ impl WebDeck {
         self.presenter.goto(col, row);
     }
 
+    /// Current column (0-based).
     pub fn col(&self) -> usize {
         self.presenter.position().0
     }
 
+    /// Current depth within the column (0-based).
     pub fn row(&self) -> usize {
         self.presenter.position().1
     }
 
+    /// Title of the slide being shown.
     pub fn slide_title(&self) -> String {
         self.presenter.current_slide().title.clone()
     }
 
+    /// Presenter notes of the slide being shown (may be empty).
     pub fn notes(&self) -> String {
         self.presenter.current_slide().notes.clone()
     }
 
+    /// Human-readable position, e.g. `"2.1 · 3/9"`.
     pub fn position(&self) -> String {
         let deck = self.presenter.deck();
         let (col, row) = self.presenter.position();

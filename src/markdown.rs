@@ -7,6 +7,16 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::theme::Theme;
 
+/// Render markdown into styled, pre-wrapped ratatui [`Text`] at the
+/// given width. Headings, lists, tables, blockquotes, code blocks, and
+/// inline styles are supported; colors come from `theme`.
+///
+/// ```
+/// use deckhand::{markdown, theme::Theme};
+///
+/// let text = markdown::render("# hi\n\nsome *styled* text", 40, &Theme::default());
+/// assert!(text.height() >= 3); // heading + underline + paragraph
+/// ```
 pub fn render(md: &str, width: u16, theme: &Theme) -> Text<'static> {
     let width = (width as usize).max(10);
     let mut opts = Options::empty();

@@ -34,37 +34,61 @@ use crate::theme::{Theme, ThemeConfig, VAlign};
 
 // ----------------------------------------------------------------- events
 
-/// A platform-independent key.
+/// A platform-independent key, as translated by each front end from its
+/// own event source (crossterm, DOM `KeyboardEvent`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
+    /// A printable character (already case/shift-resolved).
     Char(char),
+    /// Return / enter.
     Enter,
+    /// Escape.
     Esc,
+    /// Backspace.
     Backspace,
+    /// Tab.
     Tab,
+    /// Shift-tab.
     BackTab,
+    /// Arrow up.
     Up,
+    /// Arrow down.
     Down,
+    /// Arrow left.
     Left,
+    /// Arrow right.
     Right,
+    /// Home.
     Home,
+    /// End.
     End,
+    /// Page up.
     PageUp,
+    /// Page down.
     PageDown,
+    /// Insert.
     Insert,
+    /// Forward delete.
     Delete,
+    /// A function key (`F(1)` ..= `F(12)` are encodable).
     F(u8),
 }
 
+/// A [`Key`] plus its modifier state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyPress {
+    /// The key itself.
     pub key: Key,
+    /// Control held.
     pub ctrl: bool,
+    /// Alt/option held.
     pub alt: bool,
+    /// Shift held.
     pub shift: bool,
 }
 
 impl KeyPress {
+    /// A press of `key` with no modifiers.
     pub fn plain(key: Key) -> Self {
         KeyPress {
             key,
@@ -75,17 +99,25 @@ impl KeyPress {
     }
 }
 
+/// What a mouse event did, in presenter terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseAction {
+    /// Left button pressed.
     LeftClick,
+    /// Wheel scrolled up (away from the user).
     ScrollUp,
+    /// Wheel scrolled down (toward the user).
     ScrollDown,
 }
 
+/// A mouse event in screen cell coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Mouse {
+    /// Column of the affected cell.
     pub x: u16,
+    /// Row of the affected cell.
     pub y: u16,
+    /// What happened.
     pub action: MouseAction,
 }
 
@@ -158,13 +190,16 @@ pub fn encode_key(key: &KeyPress) -> Option<Vec<u8>> {
 /// What a terminal block is doing right now, per its provider.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TermState {
+    /// The terminal is live and accepting input.
     Running {
         /// How far into history the view is (0 = live).
         scroll_offset: usize,
         /// Total history lines available.
         scroll_total: usize,
     },
+    /// The process ended; `R` restarts it.
     Exited,
+    /// The terminal couldn't start; the message is shown in the box.
     Failed(String),
     /// This context can't run terminals but is showing a capture baked
     /// in by `deckhand compile --snapshots`.
@@ -181,6 +216,7 @@ pub trait TerminalProvider {
     /// Called for each visible terminal every frame with its inner size;
     /// spawn or resize as needed.
     fn prepare(&mut self, block: &TermBlock, cols: u16, rows: u16);
+    /// What this block is doing right now; drives border/hint chrome.
     fn state(&self, block: &TermBlock) -> TermState;
     /// Draw the terminal's contents into `inner`.
     fn draw(&mut self, block: &TermBlock, inner: Rect, buf: &mut Buffer);
@@ -210,7 +246,11 @@ enum Mode {
     Help,
 }
 
+/// The shared presentation state machine and renderer. See the
+/// [module docs](self) for the division of labor with providers.
 pub struct Presenter<P: TerminalProvider> {
+    /// The context's terminal provider, reachable for lifecycle calls
+    /// (e.g. the native front end kills its PTYs on shutdown).
     pub provider: P,
     deck: Deck,
     theme: Theme,
@@ -270,18 +310,22 @@ impl<P: TerminalProvider> Presenter<P> {
         })
     }
 
+    /// The deck being presented.
     pub fn deck(&self) -> &Deck {
         &self.deck
     }
 
+    /// Current (column, depth), 0-based.
     pub fn position(&self) -> (usize, usize) {
         (self.col, self.row)
     }
 
+    /// The slide currently displayed.
     pub fn current_slide(&self) -> &Slide {
         self.deck.slide(self.col, self.row)
     }
 
+    /// Whether the user asked to quit (`q` / ctrl-c).
     pub fn should_quit(&self) -> bool {
         self.quit
     }
@@ -330,6 +374,8 @@ impl<P: TerminalProvider> Presenter<P> {
 
     // ------------------------------------------------------------- input
 
+    /// Handle a key press: navigation, mode changes, terminal focus, or
+    /// (while a terminal is focused) input forwarded to the provider.
     pub fn on_key(&mut self, key: KeyPress) {
         self.status = None;
 
@@ -526,6 +572,8 @@ impl<P: TerminalProvider> Presenter<P> {
         self.mode = Mode::Overview { sel: (c, r) };
     }
 
+    /// Handle a mouse event: click to focus/release terminals or jump in
+    /// the overview, wheel to scroll terminal history.
     pub fn on_mouse(&mut self, m: Mouse) {
         let pos = Position::new(m.x, m.y);
         let term_at = |rects: &[(usize, Rect)]| {
@@ -578,6 +626,9 @@ impl<P: TerminalProvider> Presenter<P> {
 
     // -------------------------------------------------------------- draw
 
+    /// Render the current frame (slide or overview, plus status bar and
+    /// overlays) into `buf`. Also records hit-test regions for mouse
+    /// events and gives the provider its per-frame `prepare` calls.
     pub fn draw(&mut self, area: Rect, buf: &mut Buffer) {
         self.term_rects.clear();
         self.overview_rects.clear();

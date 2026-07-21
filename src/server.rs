@@ -10,6 +10,8 @@ use anyhow::{Context, Result};
 
 use crate::proto::NotesState;
 
+/// The presenter's side of the notes channel: a unix-socket listener
+/// that pushes [`NotesState`] JSON lines to every connected client.
 pub struct NotesServer {
     path: PathBuf,
     clients: Arc<Mutex<Vec<UnixStream>>>,
@@ -17,6 +19,8 @@ pub struct NotesServer {
 }
 
 impl NotesServer {
+    /// Bind the socket (replacing a stale file) and start accepting
+    /// clients on a background thread. The socket is removed on drop.
     pub fn start(path: PathBuf) -> Result<Self> {
         // Stale socket from a previous run.
         let _ = std::fs::remove_file(&path);
@@ -49,6 +53,8 @@ impl NotesServer {
         })
     }
 
+    /// Send `state` to every connected client (dropping any that have
+    /// disconnected) and remember it for clients that connect later.
     pub fn broadcast(&self, state: &NotesState) {
         *self.latest.lock().unwrap() = Some(state.clone());
         let Ok(line) = serde_json::to_string(state) else {

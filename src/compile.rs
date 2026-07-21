@@ -99,6 +99,21 @@ pub fn run(
 
 /// Render the deck back to single-file markdown. Returns the markdown and
 /// how many separator-lookalike lines were rewritten.
+///
+/// Compiled output re-parses to an equivalent deck:
+///
+/// ```
+/// use deckhand::{compile, deck};
+///
+/// let original = deck::parse("# a\n---\n# b\n???\nnotes here\n", "talk")?;
+/// let (markdown, rewrites) = compile::compile(&original)?;
+/// assert_eq!(rewrites, 0);
+///
+/// let reparsed = deck::parse(&markdown, "talk")?;
+/// assert_eq!(reparsed.columns.len(), 2);
+/// assert_eq!(reparsed.slide(1, 0).notes, "notes here");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn compile(deck: &Deck) -> Result<(String, usize)> {
     let mut out = String::new();
     let mut rewrites = 0usize;

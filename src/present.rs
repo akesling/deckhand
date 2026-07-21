@@ -117,6 +117,9 @@ impl TerminalProvider for PtyProvider {
     }
 }
 
+/// Present a deck (a local path, URL, or gist) full-screen in the
+/// current terminal, broadcasting presenter notes on `socket`. Returns
+/// when the presenter quits.
 pub fn run(input: &str, socket: PathBuf) -> Result<()> {
     let source::Loaded {
         deck,

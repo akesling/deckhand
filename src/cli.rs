@@ -72,6 +72,7 @@ fn default_socket() -> PathBuf {
     std::env::temp_dir().join("deckhand.sock")
 }
 
+/// Parse arguments and dispatch to present / notes / compile.
 pub fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {

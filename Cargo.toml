@@ -2,8 +2,16 @@
 name = "deckhand"
 version = "0.1.0"
 edition = "2024"
-description = "Present markdown slide decks as a TUI, with embedded live terminals and a presenter-notes side channel"
+rust-version = "1.88"
+description = "Present markdown slide decks as a TUI — live embedded terminals, a 2-D slide grid, presenter notes, and a wasm presenter for the browser"
 license = "MIT"
+homepage = "https://deckhand.sh"
+repository = "https://github.com/akesling/deckhand"
+documentation = "https://docs.rs/deckhand"
+readme = "README.md"
+keywords = ["presentation", "slides", "tui", "terminal", "markdown"]
+categories = ["command-line-utilities", "text-processing", "wasm"]
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE", "examples/demo.md"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

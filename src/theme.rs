@@ -16,10 +16,14 @@ use ratatui::style::Color;
 use ratatui::widgets::BorderType;
 use serde::{Deserialize, Serialize};
 
+/// A color as authored in configuration: a 0-255 palette index, or a
+/// string holding a name ("cyan", "light-blue") or hex ("#rrggbb").
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ColorSpec {
+    /// A 256-color palette index.
     Index(u8),
+    /// A color name or `#rrggbb` hex value.
     Name(String),
 }
 
@@ -84,24 +88,34 @@ pub struct ThemeConfig {
     /// `term_border` for those (unset = inherit `term_border`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_border: Option<ColorSpec>,
+    /// Status bar background.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_bg: Option<ColorSpec>,
+    /// Status bar text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_fg: Option<ColorSpec>,
+    /// Level-1 headings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub h1: Option<ColorSpec>,
+    /// Level-2 headings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub h2: Option<ColorSpec>,
+    /// List bullets and numbers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bullet: Option<ColorSpec>,
+    /// Blockquote markers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote: Option<ColorSpec>,
+    /// Link text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<ColorSpec>,
+    /// Inline code spans.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_code: Option<ColorSpec>,
+    /// Code block background.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_bg: Option<ColorSpec>,
+    /// Code block text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_fg: Option<ColorSpec>,
 }
@@ -133,34 +147,57 @@ impl ThemeConfig {
     }
 }
 
+/// Where slide content sits when shorter than the window.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VAlign {
+    /// Vertically centered (the default).
     Center,
+    /// Anchored to the top.
     Top,
 }
 
+/// A fully-resolved theme, ready to render with. Produced by
+/// [`Theme::resolve`] from layered [`ThemeConfig`]s.
 #[derive(Debug, Clone, Copy)]
 pub struct Theme {
+    /// Max content width in columns.
     pub max_width: u16,
+    /// Max content height in rows (`u16::MAX` = unlimited).
     pub max_height: u16,
+    /// Minimum horizontal margin per side, in columns.
     pub margin: u16,
+    /// Vertical placement of slide content.
     pub vertical_align: VAlign,
+    /// Border style for terminals, overview boxes, and overlays.
     pub border_type: BorderType,
+    /// Focused borders, overview selection, help chrome, key hints.
     pub accent: Color,
+    /// Rules, hints, separators, unfocused chrome.
     pub muted: Color,
+    /// Unfocused live-terminal borders.
     pub term_border: Color,
     /// `None` inherits `term_border`; presenters resolve via
     /// [`Theme::snapshot_border`].
     pub snapshot_border: Option<Color>,
+    /// Status bar background.
     pub status_bg: Color,
+    /// Status bar text.
     pub status_fg: Color,
+    /// Level-1 headings.
     pub h1: Color,
+    /// Level-2 headings.
     pub h2: Color,
+    /// List bullets and numbers.
     pub bullet: Color,
+    /// Blockquote markers.
     pub quote: Color,
+    /// Link text.
     pub link: Color,
+    /// Inline code spans.
     pub inline_code: Color,
+    /// Code block background.
     pub code_bg: Color,
+    /// Code block text.
     pub code_fg: Color,
 }
 
@@ -201,6 +238,18 @@ impl Theme {
     }
 
     /// Merge configs (lowest precedence first) over the defaults.
+    ///
+    /// ```
+    /// use deckhand::theme::{Theme, ThemeConfig};
+    /// use ratatui::style::Color;
+    ///
+    /// let user: ThemeConfig = serde_json::from_str(r#"{ "accent": "magenta" }"#)?;
+    /// let deck: ThemeConfig = serde_json::from_str(r#"{ "max_width": 60 }"#)?;
+    /// let theme = Theme::resolve(vec![user, deck])?;
+    /// assert_eq!(theme.accent, Color::Magenta); // user survives
+    /// assert_eq!(theme.max_width, 60);          // deck wins its field
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn resolve(configs: Vec<ThemeConfig>) -> Result<Theme> {
         let cfg = configs
             .into_iter()

@@ -25,6 +25,8 @@ enum Msg {
     State(NotesState),
 }
 
+/// Run the notes-follower TUI: connect to `socket` (retrying until a
+/// presenter appears), track it live, and exit on `q`/`esc`.
 pub fn run(socket: PathBuf) -> Result<()> {
     let theme = Theme::resolve(theme::user_config()?.into_iter().collect())?;
     let (tx, rx) = mpsc::channel::<Msg>();

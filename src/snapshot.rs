@@ -16,6 +16,7 @@ use anyhow::{Context, Result};
 use crate::deck::{Deck, Segment, TermSnapshot};
 use crate::term::TermSession;
 
+/// Capture settings for [`capture`].
 pub struct Options {
     /// How long to let each command run before capturing.
     pub wait: Duration,
@@ -41,6 +42,9 @@ impl Default for Options {
 /// height of its own.
 const FILL_CAPTURE_ROWS: u16 = 24;
 
+/// Run every terminal block in the deck and store what its screen
+/// looked like after [`Options::wait`]. Blocks that fail to spawn warn
+/// and stay capture-less rather than failing the whole pass.
 pub fn capture(deck: &mut Deck, deck_dir: &Path, opts: &Options) -> Result<()> {
     let cwd = match &opts.root {
         Some(root) => root

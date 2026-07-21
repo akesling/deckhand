@@ -26,16 +26,20 @@ use serde::Deserialize;
 
 use crate::deck::{Column, Deck, Segment, Slide, TermBlock};
 
+/// The top level of a `deck.json` manifest.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeckConfig {
+    /// Deck title; defaults to the manifest's file stem.
     pub title: Option<String>,
+    /// The presentation, left to right.
     pub columns: Vec<ColumnSpec>,
     /// Optional theme overrides; see `theme.rs`. Wins over the user-level
     /// `~/.config/deckhand/theme.json`.
     pub theme: Option<crate::theme::ThemeConfig>,
 }
 
+/// One entry of `columns`: a single slide or a stack with depth.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ColumnSpec {
@@ -45,14 +49,18 @@ pub enum ColumnSpec {
     Stack(Vec<SlideSpec>),
 }
 
+/// One slide in the manifest.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum SlideSpec {
     /// Shorthand: a path to a markdown file.
     Path(PathBuf),
+    /// The full object form.
     Full(Box<SlideConfig>),
 }
 
+/// The object form of a slide: exactly one content source plus optional
+/// metadata overrides.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SlideConfig {
@@ -75,21 +83,27 @@ pub struct SlideConfig {
     pub theme: Option<crate::theme::ThemeConfig>,
 }
 
+/// One pane of a `panes` slide.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum PaneSpec {
     /// Shorthand: a path to a markdown file.
     Path(PathBuf),
+    /// The full object form.
     Full(PaneConfig),
 }
 
+/// The object form of a pane: exactly one of `file` or `terminal`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PaneConfig {
+    /// Markdown file rendered as this pane.
     pub file: Option<PathBuf>,
+    /// A live terminal as this pane.
     pub terminal: Option<TermConfig>,
 }
 
+/// A terminal in the manifest (whole-slide or pane).
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TermConfig {
@@ -104,6 +118,7 @@ pub struct TermConfig {
 /// fetch over HTTP (see `source.rs`).
 pub type Reader<'a> = &'a dyn Fn(&Path) -> Result<String>;
 
+/// Load a manifest from disk, resolving referenced files relative to it.
 pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
     let src = std::fs::read_to_string(path)
         .with_context(|| format!("reading deck config {}", path.display()))?;
@@ -117,6 +132,23 @@ pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
 
 /// Parse a manifest from source text, resolving referenced files through
 /// `reader`. `label` names the manifest in errors and title fallbacks.
+///
+/// The reader abstraction is what lets manifests load from the
+/// filesystem, over HTTP, or from an in-memory bundle (as the browser
+/// presenter does with fetched gists):
+///
+/// ```
+/// use deckhand::config;
+///
+/// let reader = |p: &std::path::Path| match p.to_str() {
+///     Some("intro.md") => Ok("# hello\n".to_string()),
+///     other => anyhow::bail!("no such file: {other:?}"),
+/// };
+/// let (deck, _theme) =
+///     config::parse_manifest(r#"{ "columns": ["intro.md"] }"#, "deck.json", &reader)?;
+/// assert_eq!(deck.slide(0, 0).title, "hello");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn parse_manifest(
     src: &str,
     label: &str,

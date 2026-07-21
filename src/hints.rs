@@ -10,6 +10,13 @@ pub const JUMP_KEYS: &[char] = &[
 
 /// Hint codes for `n` slides: single letters while they last, otherwise
 /// uniform two-letter codes (no prefix ambiguity either way).
+///
+/// ```
+/// use deckhand::hints::jump_codes;
+///
+/// assert_eq!(jump_codes(3), ["a", "s", "d"]);
+/// assert_eq!(jump_codes(25)[0], "aa"); // >20 slides: two-letter codes
+/// ```
 pub fn jump_codes(n: usize) -> Vec<String> {
     if n <= JUMP_KEYS.len() {
         return JUMP_KEYS.iter().take(n).map(char::to_string).collect();

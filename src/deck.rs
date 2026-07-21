@@ -24,21 +24,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::theme::ThemeConfig;
 
+/// A parsed presentation: columns left-to-right, slides top-to-bottom
+/// within each column.
 #[derive(Debug)]
 pub struct Deck {
+    /// Shown in the status bar and the notes client.
     pub title: String,
+    /// The horizontal axis (earlier / later).
     pub columns: Vec<Column>,
 }
 
+/// One column of the 2-D grid; index 0 is the shallow slide, later
+/// entries are deeper detail.
 #[derive(Debug)]
 pub struct Column {
+    /// The vertical axis (shallower / deeper).
     pub slides: Vec<Slide>,
 }
 
+/// A single slide: rendered segments plus presentation metadata.
 #[derive(Debug)]
 pub struct Slide {
+    /// From the first heading, first text line, or "col.row".
     pub title: String,
+    /// Markdown and terminal blocks, in slide order.
     pub segments: Vec<Segment>,
+    /// Presenter notes (the part after a `???` line); empty if none.
     pub notes: String,
     /// Per-slide theme overrides, from a manifest slide's `theme` field
     /// and/or a `theme` fence in the slide's markdown; layered over the
@@ -46,12 +57,16 @@ pub struct Slide {
     pub theme: Option<crate::theme::ThemeConfig>,
 }
 
+/// One vertically-stacked piece of a slide.
 #[derive(Debug)]
 pub enum Segment {
+    /// Markdown source, rendered by [`crate::markdown`].
     Markdown(String),
+    /// An embedded terminal.
     Terminal(TermBlock),
 }
 
+/// An embedded terminal block, as authored in the deck.
 #[derive(Debug, Clone)]
 pub struct TermBlock {
     /// Globally unique across the deck; keys the live PTY session.
@@ -73,12 +88,17 @@ pub struct TermBlock {
 /// the geometry they were captured at.
 #[derive(Debug, Clone)]
 pub struct TermSnapshot {
+    /// Width the capture was taken at.
     pub cols: u16,
+    /// Height the capture was taken at.
     pub rows: u16,
+    /// Raw ANSI bytes; feed to a terminal emulator to reproduce.
     pub data: Vec<u8>,
 }
 
 impl Deck {
+    /// The slide at (column, depth). Panics if out of range; callers
+    /// navigate via clamped coordinates.
     pub fn slide(&self, col: usize, row: usize) -> &Slide {
         &self.columns[col].slides[row]
     }
@@ -97,6 +117,7 @@ impl Deck {
 }
 
 impl Slide {
+    /// Ids of this slide's terminal blocks, in slide order.
     pub fn term_ids(&self) -> Vec<usize> {
         self.segments
             .iter()
@@ -142,8 +163,10 @@ pub fn load(path: &Path) -> Result<(Deck, Option<ThemeConfig>)> {
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrontMatter {
+    /// Deck title override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Deck-level theme overrides.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeConfig>,
 }
@@ -195,6 +218,18 @@ fn split_frontmatter(source: &str) -> Option<(String, String)> {
     None
 }
 
+/// Parse single-file markdown deck *content* (no frontmatter handling —
+/// use [`parse_full`] for that). `title` is the fallback deck title.
+///
+/// ```
+/// use deckhand::deck;
+///
+/// let deck = deck::parse("# intro\n---\n# demo\n--\n## details\n", "talk")?;
+/// assert_eq!(deck.columns.len(), 2);
+/// assert_eq!(deck.columns[1].slides.len(), 2);
+/// assert_eq!(deck.slide(1, 1).title, "details");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn parse(source: &str, title: &str) -> Result<Deck> {
     let mut next_term_id = 0usize;
     let mut columns = Vec::new();

@@ -16,14 +16,18 @@ use anyhow::{Context, Result, bail};
 use crate::deck::{self, Deck};
 use crate::theme::ThemeConfig;
 
+/// A deck resolved from any source, plus its context.
 pub struct Loaded {
+    /// The parsed deck.
     pub deck: Deck,
+    /// The deck's own theme config (manifest `theme` or frontmatter).
     pub theme: Option<ThemeConfig>,
     /// Working directory for embedded terminals (the deck's directory for
     /// local decks; the current directory for remote ones).
     pub base_dir: PathBuf,
 }
 
+/// Load a deck from a local path, a plain URL, or a GitHub gist URL.
 pub fn load(input: &str) -> Result<Loaded> {
     if input.starts_with("http://") || input.starts_with("https://") {
         load_remote(input)
