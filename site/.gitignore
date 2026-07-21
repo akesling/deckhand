@@ -1,0 +1,6 @@
+node_modules/
+dist/
+_site/
+wasm/
+bun.lock
+bun.lockb

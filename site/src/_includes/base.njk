@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if title %}{{ title }} · {% endif %}deckhand ⚓</title>
+  <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
+  {% if terminal %}<link rel="stylesheet" href="/css/xterm.css">{% endif %}
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/">deckhand <span class="anchor">⚓</span></a>
+    <nav>
+      <a href="/why/">why</a>
+      <a href="/getting-started/">getting started</a>
+      <a href="/docs/">docs</a>
+      <a href="/playground/">playground</a>
+      <a href="/play/">play</a>
+      <a href="https://github.com/akesling/deckhand">source</a>
+    </nav>
+  </header>
+  <main{% if wide %} class="wide"{% endif %}>
+    {{ content | safe }}
+  </main>
+  <footer>
+    <p>deckhand — a slide deck, in your terminal. MIT licensed.</p>
+  </footer>
+  {% if script %}<script type="module" src="/js/{{ script }}.js"></script>{% endif %}
+</body>
+</html>

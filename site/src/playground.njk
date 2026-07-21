@@ -1,0 +1,49 @@
+---
+layout: base.njk
+title: playground
+terminal: true
+script: playground
+wide: true
+---
+
+<h1>Playground</h1>
+
+<p>Write a deck on the left; the terminal presents it live — the same
+deckhand core, compiled to WebAssembly. Your draft is kept in this
+browser. <button id="pg-reset" class="linklike">reset to the example</button></p>
+
+<div class="playground">
+  <div>
+    <div class="terminal-frame playground-frame" id="pg-terminal"></div>
+    <div class="terminal-caption" id="pg-caption"></div>
+  </div>
+  <textarea id="pg-editor" spellcheck="false" autocomplete="off"
+            aria-label="deck markdown editor"></textarea>
+</div>
+<p id="pg-status" class="pg-status"></p>
+
+<details class="gist-tools">
+  <summary>save / load via gist</summary>
+  <form id="pg-gist-load-form" class="play-form">
+    <input type="url" id="pg-gist-url" placeholder="https://gist.github.com/you/abc123"
+           autocomplete="off" spellcheck="false">
+    <button type="submit">load</button>
+  </form>
+  <form id="pg-gist-save-form" class="play-form">
+    <input type="password" id="pg-gh-token" placeholder="GitHub token (gist scope only)"
+           autocomplete="off">
+    <label class="remember"><input type="checkbox" id="pg-token-remember"> remember</label>
+    <button type="submit">save as new gist</button>
+    <button type="button" id="pg-copy" class="secondary-btn">copy markdown</button>
+  </form>
+  <p class="fineprint">Saving creates a <em>secret</em> gist through the GitHub API with your
+  token — it needs only the <code>gist</code> scope
+  (<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">create one here</a>)
+  and never leaves your browser except to call GitHub. “Remember” stores it in this browser's
+  localStorage. No token? <em>copy markdown</em> and paste at gist.github.com/new. Loading works
+  token-free for public gists, including multi-file manifest gists (flattened into the editor).</p>
+</details>
+
+<p class="hint-bar">click the terminal, then <kbd>space</kbd> next ·
+<kbd>o</kbd> overview · <kbd>↓</kbd>/<kbd>↑</kbd> depth — the editor keeps
+your slide position while you type</p>

@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Lines of history kept per terminal for scrollback viewing.
 const SCROLLBACK_LINES: usize = 10_000;
@@ -150,71 +149,4 @@ impl TermSession {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-}
-
-/// Translate a crossterm key event into the byte sequence a terminal
-/// would send. Returns `None` for keys with no sensible encoding.
-pub fn key_to_bytes(key: &KeyEvent) -> Option<Vec<u8>> {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let alt = key.modifiers.contains(KeyModifiers::ALT);
-    let mut out: Vec<u8> = Vec::new();
-    if alt {
-        out.push(0x1b);
-    }
-    match key.code {
-        KeyCode::Char(c) => {
-            if ctrl {
-                let b = match c {
-                    'a'..='z' => c as u8 - b'a' + 1,
-                    'A'..='Z' => c.to_ascii_lowercase() as u8 - b'a' + 1,
-                    '@' | ' ' => 0,
-                    '[' => 27,
-                    '\\' => 28,
-                    ']' => 29,
-                    '^' => 30,
-                    '_' | '/' => 31,
-                    _ => return None,
-                };
-                out.push(b);
-            } else {
-                let mut buf = [0u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-            }
-        }
-        KeyCode::Enter => out.push(b'\r'),
-        KeyCode::Backspace => out.push(0x7f),
-        KeyCode::Tab => out.push(b'\t'),
-        KeyCode::BackTab => out.extend_from_slice(b"\x1b[Z"),
-        KeyCode::Esc => out.push(0x1b),
-        KeyCode::Up => out.extend_from_slice(b"\x1b[A"),
-        KeyCode::Down => out.extend_from_slice(b"\x1b[B"),
-        KeyCode::Right => out.extend_from_slice(b"\x1b[C"),
-        KeyCode::Left => out.extend_from_slice(b"\x1b[D"),
-        KeyCode::Home => out.extend_from_slice(b"\x1b[H"),
-        KeyCode::End => out.extend_from_slice(b"\x1b[F"),
-        KeyCode::PageUp => out.extend_from_slice(b"\x1b[5~"),
-        KeyCode::PageDown => out.extend_from_slice(b"\x1b[6~"),
-        KeyCode::Insert => out.extend_from_slice(b"\x1b[2~"),
-        KeyCode::Delete => out.extend_from_slice(b"\x1b[3~"),
-        KeyCode::F(n) => {
-            let seq: &[u8] = match n {
-                1 => b"\x1bOP",
-                2 => b"\x1bOQ",
-                3 => b"\x1bOR",
-                4 => b"\x1bOS",
-                5 => b"\x1b[15~",
-                6 => b"\x1b[17~",
-                7 => b"\x1b[18~",
-                8 => b"\x1b[19~",
-                9 => b"\x1b[20~",
-                10 => b"\x1b[21~",
-                11 => b"\x1b[23~",
-                12 => b"\x1b[24~",
-                _ => return None,
-            };
-            out.extend_from_slice(seq);
-        }
-        _ => return None,
-    }
-    Some(out)
 }

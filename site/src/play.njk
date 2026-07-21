@@ -1,0 +1,40 @@
+---
+layout: base.njk
+title: play
+terminal: true
+script: play
+wide: true
+---
+
+<h1>Present a deck from anywhere</h1>
+
+<p>Paste a link to a deck — a <strong>GitHub gist</strong> (best: the API
+allows browser fetches), a raw markdown URL, or a JSON manifest URL —
+and present it right here using deckhand's WebAssembly build. Gists are
+resolved exactly like the CLI does it: <code>deck.json</code> first, then
+<code>deck.md</code>, then the only file, then the first <code>.md</code>.</p>
+
+<form class="play-form" id="play-form">
+  <input type="url" id="play-url" required
+         placeholder="https://gist.github.com/you/abc123"
+         autocomplete="off" spellcheck="false">
+  <button type="submit">present</button>
+</form>
+<p id="play-status"></p>
+
+<div class="terminal-frame" id="play-terminal"></div>
+<div class="terminal-caption" id="play-caption"></div>
+<p class="hint-bar"><kbd>space</kbd> next · <kbd>shift-space</kbd> back ·
+<kbd>o</kbd> overview · <kbd>↓</kbd>/<kbd>↑</kbd> depth — share this page
+with <code>?deck=&lt;url&gt;</code> to deep-link a deck</p>
+
+<h2>Notes</h2>
+<ul>
+  <li>Terminal blocks show as placeholders here — browsers can't spawn
+  PTYs. To run them for real: <code>deckhand &lt;the same url&gt;</code>.</li>
+  <li>Plain URLs need CORS headers to be fetchable from a browser;
+  gists and <code>raw.githubusercontent.com</code> links work out of the
+  box.</li>
+  <li>A gist can hold a whole multi-file deck: a <code>deck.json</code>
+  manifest plus slide files, resolved by filename.</li>
+</ul>

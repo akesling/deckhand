@@ -1,0 +1,301 @@
+:root {
+  --bg: #0d0d11;
+  --bg-raised: #16161c;
+  --fg: #d8d8d8;
+  --fg-muted: #8a8a93;
+  --accent: #c678dd;
+  --accent-2: #56b6c2;
+  --border: #2a2a33;
+  --code-bg: #1c1c24;
+  --max: 52rem;
+  font-size: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+
+code, pre, kbd, .terminal-frame {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* ------------------------------------------------------------------ nav */
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.brand .anchor { color: var(--accent); }
+
+.nav nav a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  margin-left: 1.25rem;
+}
+.nav nav a:hover { color: var(--fg); }
+
+/* ----------------------------------------------------------------- main */
+
+main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+main.wide { max-width: 72rem; }
+
+h1, h2, h3 { line-height: 1.25; }
+h1 { font-size: 2rem; }
+h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+a { color: var(--accent-2); }
+h1 a, h2 a, h3 a { color: inherit; text-decoration: none; }
+
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .9rem 1.1rem;
+  overflow-x: auto;
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+code {
+  background: var(--code-bg);
+  padding: .1em .35em;
+  border-radius: 4px;
+  font-size: .88em;
+}
+pre code { background: none; padding: 0; }
+
+kbd {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 .35em;
+  font-size: .85em;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: .92rem;
+}
+th, td {
+  text-align: left;
+  padding: .4rem .7rem;
+  border-bottom: 1px solid var(--border);
+}
+th { color: var(--fg-muted); font-weight: 600; }
+
+blockquote {
+  margin: 1rem 0;
+  padding: .1rem 1rem;
+  border-left: 3px solid var(--accent);
+  color: var(--fg-muted);
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 1.5rem;
+  font-size: .85rem;
+}
+
+/* ----------------------------------------------------------------- hero */
+
+.hero { text-align: center; padding: 2.5rem 0 1rem; }
+.hero h1 { font-size: 2.6rem; margin-bottom: .4rem; }
+.hero .tagline { color: var(--fg-muted); font-size: 1.2rem; margin-top: 0; }
+.hero .actions { margin-top: 1.4rem; }
+.hero .actions a {
+  display: inline-block;
+  margin: 0 .4rem;
+  padding: .55rem 1.2rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.hero .actions .primary { background: var(--accent); color: #101014; }
+.hero .actions .secondary { border: 1px solid var(--border); color: var(--fg); }
+
+.install-line {
+  display: inline-block;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .5rem 1rem;
+  margin-top: 1.2rem;
+  color: var(--accent-2);
+}
+
+/* ------------------------------------------------------------- terminal */
+
+.terminal-frame {
+  background: #101014;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem;
+  margin: 1.5rem 0 .25rem;
+  /* Fixed height: the fit addon derives rows from this, so it must not
+     depend on the terminal's own content or fitting loops forever. */
+  height: 26rem;
+  overflow: hidden;
+}
+.terminal-frame .xterm { height: 100%; }
+
+.terminal-caption {
+  color: var(--fg-muted);
+  font-size: .85rem;
+  min-height: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+.terminal-caption .caption-meta { color: var(--accent-2); }
+
+.hint-bar {
+  color: var(--fg-muted);
+  font-size: .85rem;
+  text-align: center;
+}
+.hint-bar kbd { margin: 0 .1em; }
+
+/* ------------------------------------------------------------- features */
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 2.5rem 0;
+}
+.feature {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+}
+.feature h3 { margin: .2rem 0 .5rem; font-size: 1rem; }
+.feature p { margin: 0; color: var(--fg-muted); font-size: .92rem; }
+
+/* ----------------------------------------------------------------- play */
+
+.play-form {
+  display: flex;
+  gap: .6rem;
+  margin: 1.5rem 0 .5rem;
+}
+.play-form input[type="url"] {
+  flex: 1;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: .55rem .8rem;
+  font-size: .95rem;
+}
+.play-form button {
+  background: var(--accent);
+  color: #101014;
+  border: none;
+  border-radius: 8px;
+  padding: .55rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#play-status { color: var(--fg-muted); font-size: .9rem; min-height: 1.3rem; }
+#play-status.error { color: #e06c75; }
+
+/* ----------------------------------------------------------- playground */
+
+.playground {
+  /* Stage on top, script below: the deck stays in view while you type.
+     minmax(0, …) + min-width: 0 keep the track's minimum independent of
+     the xterm canvas width — a bare `1fr` means minmax(auto, 1fr), and
+     content-derived minimums feed the fit-addon resize loop. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin: 1.5rem 0 .5rem;
+}
+.playground > * { min-width: 0; }
+.playground textarea {
+  width: 100%;
+  height: 16rem;
+  resize: vertical;
+  background: var(--code-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: .85rem;
+  line-height: 1.5;
+  tab-size: 2;
+}
+.playground textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.playground .terminal-frame { margin: 0; height: 26rem; }
+.playground .terminal-caption { margin-bottom: 0; margin-top: .4rem; }
+
+.pg-status { color: var(--fg-muted); font-size: .9rem; min-height: 1.3rem; }
+.pg-status.error { color: #e06c75; }
+
+.gist-tools {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .6rem 1rem;
+  margin: 1rem 0;
+}
+.gist-tools summary { cursor: pointer; color: var(--fg-muted); }
+.gist-tools .play-form { margin: .8rem 0 .3rem; flex-wrap: wrap; }
+.gist-tools label.remember {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  color: var(--fg-muted);
+  font-size: .9rem;
+}
+.gist-tools .secondary-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: .55rem 1rem;
+  cursor: pointer;
+}
+.gist-tools .fineprint {
+  color: var(--fg-muted);
+  font-size: .82rem;
+  margin: .5rem 0 .3rem;
+}
+
+button.linklike {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}

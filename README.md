@@ -5,7 +5,9 @@ presentation out — with **live embedded terminals**, a **2-D slide grid**,
 a **bird's-eye overview**, and **presenter notes** that follow along in a
 separate terminal.
 
-Built in Rust on [ratatui](https://ratatui.rs).
+Built in Rust on [ratatui](https://ratatui.rs). The website (with a
+WebAssembly-powered in-browser demo and gist loader) lives in
+[`site/`](site/README.md).
 
 ## Quick start
 
@@ -297,6 +299,18 @@ Running two decks at once? Give each a socket:
 deckhand present talk.md --socket /tmp/talk.sock
 deckhand notes --socket /tmp/talk.sock
 ```
+
+## Development
+
+Repo tooling lives in `scripts/` (each self-contained and executable):
+
+| script | does |
+|--------|------|
+| `scripts/lint.sh` | all linters: `cargo fmt --check`, clippy (native + wasm32), shellcheck, biome |
+| `scripts/check.sh` | lint + `cargo test` + TypeScript type-check |
+| `scripts/build-wasm.sh` | wasm module → `site/wasm/` (`--dev` for fast builds) |
+| `scripts/build-site.sh` | full site build → `site/_site/` |
+| `scripts/dev.sh` | dev server: 11ty live reload + `bun --watch` + wasm rebuild on Rust changes |
 
 ## Current limitations
 

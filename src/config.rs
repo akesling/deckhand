@@ -17,7 +17,7 @@
 //! later entries = deeper). A slide is either a markdown path (string) or
 //! an object. Paths are relative to the manifest. Referenced markdown files
 //! are one slide each — `---`/`--` are not split — but `???` notes and
-//! ```terminal blocks inside them still work.
+//! `terminal` fences inside them still work.
 
 use std::path::{Path, PathBuf};
 

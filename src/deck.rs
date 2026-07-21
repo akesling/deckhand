@@ -9,9 +9,11 @@
 //!   a fenced code block whose info string starts with `terminal` becomes an
 //!   embedded interactive PTY, e.g.:
 //!
-//!   ```terminal rows=12
-//!   python3 -q
-//!   ```
+//! ````text
+//! ```terminal rows=12
+//! python3 -q
+//! ```
+//! ````
 //!
 //!   An empty body spawns an interactive shell ($SHELL).
 
@@ -39,7 +41,7 @@ pub struct Slide {
     pub segments: Vec<Segment>,
     pub notes: String,
     /// Per-slide theme overrides, from a manifest slide's `theme` field
-    /// and/or a ```theme block in the slide's markdown; layered over the
+    /// and/or a `theme` fence in the slide's markdown; layered over the
     /// deck/user theme when this slide is displayed.
     pub theme: Option<crate::theme::ThemeConfig>,
 }

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "include": ["src/ts/**", "eleventy.config.js"],
+    "ignore": ["node_modules", "dist", "_site", "wasm"]
+  },
+  "formatter": { "enabled": false },
+  "organizeImports": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": { "recommended": true }
+  }
+}

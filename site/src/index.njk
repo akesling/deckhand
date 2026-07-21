@@ -1,0 +1,60 @@
+---
+layout: base.njk
+terminal: true
+script: demo
+wide: true
+---
+
+<div class="hero">
+  <h1>a slide deck, <br>in your terminal <span class="anchor">⚓</span></h1>
+  <p class="tagline">deckhand presents plain markdown as a full-screen TUI —
+  with <strong>live embedded terminals</strong>, a <strong>2-D slide grid</strong>,
+  and <strong>presenter notes</strong> in a second terminal.</p>
+  <div class="actions">
+    <a class="primary" href="/getting-started/">get started</a>
+    <a class="secondary" href="/play/">present a gist →</a>
+  </div>
+  <div><code class="install-line">deckhand your-talk.md</code></div>
+</div>
+
+<div class="terminal-frame" id="demo-terminal"></div>
+<div class="terminal-caption" id="demo-caption"></div>
+<p class="hint-bar">this is deckhand itself, compiled to WebAssembly —
+click the terminal, then <kbd>space</kbd> to advance,
+<kbd>o</kbd> for the overview, <kbd>↓</kbd> to go deeper</p>
+
+<div class="features">
+  <div class="feature">
+    <h3>⌨ real terminals in slides</h3>
+    <p>A fenced <code>terminal</code> block spawns an actual PTY on the slide —
+    run a REPL, htop, or your demo live, then keep presenting while it runs.</p>
+  </div>
+  <div class="feature">
+    <h3>🗺 two-dimensional decks</h3>
+    <p>Columns move the talk forward; depth hides detail until someone asks.
+    The overview shows the whole grid with vimium-style jump codes.</p>
+  </div>
+  <div class="feature">
+    <h3>📝 presenter notes</h3>
+    <p>Notes after a <code>???</code> line stream over a unix socket to
+    <code>deckhand notes</code> in another terminal — with a talk timer and
+    what's-next preview.</p>
+  </div>
+  <div class="feature">
+    <h3>📄 just markdown</h3>
+    <p>One file with <code>---</code> separators, or a JSON manifest with one
+    file per slide. Compile either into a single shareable artifact.</p>
+  </div>
+  <div class="feature">
+    <h3>🎨 themeable</h3>
+    <p>Colors, borders, margins, and alignment — per user, per deck, or per
+    slide, in frontmatter or the manifest. Solarized-safe defaults.</p>
+  </div>
+  <div class="feature">
+    <h3>🔗 present from a gist</h3>
+    <p><code>deckhand https://gist.github.com/you/abc123</code> — or load the
+    same gist right here <a href="/play/">in your browser</a>.</p>
+  </div>
+</div>
+
+<p style="text-align:center"><a href="/why/">why deckhand? →</a></p>

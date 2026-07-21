@@ -1,22 +1,23 @@
 //! `deckhand compile`: flatten a deck — typically a JSON manifest with
 //! per-slide files — into a single-file markdown deck that presents
-//! identically (columns as `---`, depth as `--`, notes as `???`, terminals
-//! as ```terminal fences).
+//! identically (columns as `---`, depth as `--`, notes as `???`,
+//! terminals as `terminal` fences).
 //!
 //! The deck title and deck-level theme are preserved as frontmatter, and
-//! per-slide themes as ```theme blocks. Slide `title` overrides have no
+//! per-slide themes as `theme` fences. Slide `title` overrides have no
 //! single-file syntax and fall back to what the content implies. Bare
 //! `---`/`--` lines inside slide bodies would split slides on re-parse,
 //! so they're rewritten to `***` (with a warning).
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
 
 use crate::deck::{self, Deck, Segment};
-use crate::source;
 
-pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
+/// CLI entry point; native-only because it can load remote decks.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run(input: &str, output: Option<&std::path::Path>) -> Result<()> {
+    use crate::source;
+
     let source::Loaded {
         deck,
         theme: deck_theme,
