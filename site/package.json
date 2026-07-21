@@ -13,13 +13,13 @@
     "lint": "bunx biome lint --error-on-warnings ."
   },
   "devDependencies": {
-    "@11ty/eleventy": "^3.0.0",
+    "@11ty/eleventy": "3.1.6",
     "@biomejs/biome": "1.9.4",
-    "typescript": "^5.5.0"
+    "typescript": "5.9.3"
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0"
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0"
   },
   "trustedDependencies": [
     "@biomejs/biome"

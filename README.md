@@ -349,6 +349,14 @@ Repo tooling lives in `scripts/` (each self-contained and executable):
 | `scripts/build-wasm.sh` | wasm module → `site/wasm/` (`--dev` for fast builds) |
 | `scripts/build-site.sh` | full site build → `site/_site/` |
 | `scripts/dev.sh` | dev server: 11ty live reload + `bun --watch` + wasm rebuild on Rust changes |
+| `scripts/publish.sh` | crates.io publish from a pristine clone; dry-run by default (`--i-know-what-i-am-doing` to publish) |
+
+CI (`.github/workflows/ci.yml`) runs the same gates on PRs and merges to
+main, plus the PTY tests and an MSRV check; everything is pinned —
+actions by commit SHA, the toolchain by `rust-toolchain.toml`, deps by
+`Cargo.lock`/`bun.lock` (cargo runs `--locked`, bun `--frozen-lockfile`).
+Dependabot PRs don't run CI automatically; trigger the workflow manually
+after review.
 
 ## Current limitations
 

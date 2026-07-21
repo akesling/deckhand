@@ -11,10 +11,10 @@ echo "== cargo fmt --check"
 cargo fmt --check
 
 echo "== cargo clippy (native)"
-cargo clippy --all-targets -- -D warnings
+cargo clippy --locked --all-targets -- -D warnings
 
 echo "== cargo clippy (wasm32)"
-cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+cargo clippy --locked --lib --target wasm32-unknown-unknown -- -D warnings
 
 if command -v shellcheck >/dev/null; then
   echo "== shellcheck"

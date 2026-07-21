@@ -1,0 +1,7 @@
+# Pins the toolchain for local development AND CI so builds are
+# identical everywhere. Bump deliberately (and keep rust-version in
+# Cargo.toml — the MSRV floor — in mind when you do).
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Dependabot PRs don't run CI automatically (see the job `if`s);
+  # trigger manually from the Actions tab after review.
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+# All actions are pinned by commit SHA (the tag is a comment); the Rust
+# toolchain comes from rust-toolchain.toml, bun/node deps from bun.lock
+# via --frozen-lockfile, and cargo runs --locked — so CI builds exactly
+# what local builds.
+jobs:
+  check:
+    name: lint + test
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: install site deps
+        working-directory: site
+        run: bun install --frozen-lockfile
+      - name: lint, test, doctests, docs, types
+        run: ./scripts/check.sh
+      - name: PTY-dependent tests
+        run: cargo test --locked -- --ignored
+
+  msrv:
+    name: MSRV (1.88)
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install MSRV toolchain
+        run: rustup toolchain install 1.88.0 --profile minimal --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: msrv
+      - run: cargo +1.88.0 check --locked --all-targets
+      - run: cargo +1.88.0 check --locked --lib --target wasm32-unknown-unknown
+
+  site:
+    name: site build
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: cache wasm-bindgen-cli
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          # Version must match Cargo.lock; scripts/build-wasm.sh fails
+          # loudly (with the fix command) if they drift.
+          key: wasm-bindgen-0.2.126-${{ runner.os }}
+      - name: install wasm-bindgen-cli
+        run: command -v wasm-bindgen || cargo install wasm-bindgen-cli --version 0.2.126 --locked
+      - name: install site deps
+        working-directory: site
+        run: bun install --frozen-lockfile
+      - name: build site (wasm + ts + 11ty)
+        run: ./scripts/build-site.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site
+          path: site/_site

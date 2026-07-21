@@ -1,0 +1,21 @@
+# Dependency update PRs. CI deliberately does NOT run on dependabot's
+# PRs (job-level `if`s in ci.yml) — review the diff, then trigger the CI
+# workflow manually via workflow_dispatch before merging.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: bun
+    directory: /site
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

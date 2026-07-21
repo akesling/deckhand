@@ -29,7 +29,7 @@ if [ "${_have}" != "${_required}" ]; then
   exit 1
 fi
 
-cargo build --lib --target wasm32-unknown-unknown ${_cargo_flags[@]+"${_cargo_flags[@]}"}
+cargo build --locked --lib --target wasm32-unknown-unknown ${_cargo_flags[@]+"${_cargo_flags[@]}"}
 wasm-bindgen "target/wasm32-unknown-unknown/${_profile}/deckhand.wasm" \
   --target web --out-dir site/wasm
 

@@ -11,10 +11,10 @@ cd "${_root}"
 # Warnings are errors here too: RUSTFLAGS covers unit/integration test
 # compilation, RUSTDOCFLAGS covers doctests and the docs build.
 echo "== cargo test (unit, integration, doctests)"
-RUSTFLAGS="-D warnings" RUSTDOCFLAGS="-D warnings" cargo test
+RUSTFLAGS="-D warnings" RUSTDOCFLAGS="-D warnings" cargo test --locked
 
 echo "== cargo doc"
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --quiet
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --document-private-items --quiet
 
 if command -v bun >/dev/null && [ -d "${_root}/site/node_modules" ]; then
   echo "== typescript check"
