@@ -168,7 +168,7 @@ For bigger talks, point deckhand at a manifest instead:
 | `space`, `n` | next slide (walks every column depth-first) |
 | `backspace`, `p` | previous slide |
 | `g`, `G` | first / last column |
-| `o` | overview grid (`hjkl` + `enter` to jump) |
+| `o` | overview grid — each slide shows a short code; type it to jump (or `hjkl` + `enter`, or click) |
 | `1`-`9` | select a terminal pane (marked with `▸`) |
 | `t`, `enter` | focus the selected terminal |
 | `Ctrl-q` | release terminal focus |

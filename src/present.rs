@@ -39,6 +39,32 @@ enum RenderItem {
     Term(TermBlock),
 }
 
+/// Keys usable for overview jump codes, most ergonomic first. Excludes
+/// the overview's own bindings (h j k l o q) so a code can never collide
+/// with navigation.
+const JUMP_KEYS: &[char] = &[
+    'a', 's', 'd', 'f', 'g', 'e', 'r', 't', 'u', 'i', 'w', 'n', 'm', 'c', 'v', 'b', 'x', 'z', 'y',
+    'p',
+];
+
+/// Hint codes for `n` slides: single letters while they last, otherwise
+/// uniform two-letter codes (no prefix ambiguity either way).
+fn jump_codes(n: usize) -> Vec<String> {
+    if n <= JUMP_KEYS.len() {
+        return JUMP_KEYS.iter().take(n).map(char::to_string).collect();
+    }
+    let mut out = Vec::with_capacity(n);
+    'outer: for a in JUMP_KEYS {
+        for b in JUMP_KEYS {
+            if out.len() >= n {
+                break 'outer;
+            }
+            out.push(format!("{a}{b}"));
+        }
+    }
+    out
+}
+
 pub struct App {
     deck: Deck,
     deck_dir: PathBuf,
@@ -59,6 +85,8 @@ pub struct App {
     socket_path: PathBuf,
     started_at: u64,
     status: Option<String>,
+    /// Partially-typed overview jump code.
+    jump_input: String,
     theme: Theme,
     slide_themes: HashMap<(usize, usize), Theme>,
     quit: bool,
@@ -111,6 +139,7 @@ pub fn run(input: &str, socket: PathBuf) -> Result<()> {
         socket_path: socket,
         started_at,
         status: None,
+        jump_input: String::new(),
         theme,
         slide_themes,
         quit: false,
@@ -280,6 +309,7 @@ impl App {
             KeyCode::Char('g') | KeyCode::Home => self.goto(0, 0),
             KeyCode::Char('G') | KeyCode::End => self.goto(self.deck.columns.len() - 1, 0),
             KeyCode::Char('o') => {
+                self.jump_input.clear();
                 self.mode = Mode::Overview {
                     sel: (self.col, self.row),
                 }
@@ -390,9 +420,44 @@ impl App {
         self.status = Some("terminals restarted".to_string());
     }
 
+    /// (slide position, code) pairs in depth-first order.
+    fn overview_codes(&self) -> Vec<((usize, usize), String)> {
+        let flat = self.deck.flat();
+        let codes = jump_codes(flat.len());
+        flat.into_iter().zip(codes).collect()
+    }
+
     fn on_key_overview(&mut self, key: KeyEvent, sel: (usize, usize)) {
+        // Jump codes take priority: the alphabet excludes every key
+        // bound below, so this can't shadow navigation.
+        if let KeyCode::Char(ch) = key.code
+            && JUMP_KEYS.contains(&ch)
+        {
+            self.jump_input.push(ch);
+            let codes = self.overview_codes();
+            let hit = codes
+                .iter()
+                .find(|(_, code)| *code == self.jump_input)
+                .map(|(target, _)| *target);
+            if let Some(target) = hit {
+                self.jump_input.clear();
+                self.mode = Mode::Slide;
+                self.goto(target.0, target.1);
+            } else if !codes
+                .iter()
+                .any(|(_, code)| code.starts_with(self.jump_input.as_str()))
+            {
+                self.jump_input.clear();
+            }
+            return;
+        }
+        let had_pending = !self.jump_input.is_empty();
+        self.jump_input.clear();
+
         let (mut c, mut r) = sel;
         match key.code {
+            // With a partial code pending, esc just cancels it.
+            KeyCode::Esc if had_pending => return,
             KeyCode::Esc | KeyCode::Char('o') => {
                 self.mode = Mode::Slide;
                 return;
@@ -651,16 +716,26 @@ impl App {
         let bw: u16 = 26;
         let bh: u16 = 4;
 
+        let mut header = vec![
+            Span::styled(" overview ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " — type a code or ↵ to jump · esc back",
+                Style::default().fg(self.theme.muted),
+            ),
+        ];
+        if !self.jump_input.is_empty() {
+            header.push(Span::styled(
+                format!("  {}…", self.jump_input),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
         f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled(" overview ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    " — ↵ jump · esc back",
-                    Style::default().fg(self.theme.muted),
-                ),
-            ])),
+            Paragraph::new(Line::from(header)),
             Rect { height: 1, ..area },
         );
+        let codes: HashMap<(usize, usize), String> = self.overview_codes().into_iter().collect();
         let grid = Rect {
             x: area.x,
             y: area.y + 1,
@@ -702,15 +777,31 @@ impl App {
                 } else {
                     Style::default().fg(self.theme.muted)
                 };
-                let mut title = format!(" {}.{} ", ci + 1, ri + 1);
+                let mut title_spans = Vec::new();
+                if let Some(code) = codes.get(&(ci, ri)) {
+                    let candidate =
+                        self.jump_input.is_empty() || code.starts_with(self.jump_input.as_str());
+                    let code_style = if candidate {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(self.theme.muted)
+                    };
+                    title_spans.push(Span::styled(format!(" {code} "), code_style));
+                }
+                title_spans.push(Span::styled(
+                    format!("{}.{} ", ci + 1, ri + 1),
+                    border_style,
+                ));
                 if current {
-                    title.push_str("● ");
+                    title_spans.push(Span::styled("● ", border_style));
                 }
                 let block = Block::default()
                     .borders(Borders::ALL)
                     .border_type(self.theme.border_type)
                     .border_style(border_style)
-                    .title(Span::styled(title, border_style));
+                    .title(Line::from(title_spans));
                 let inner = block.inner(rect);
                 f.render_widget(block, rect);
 
@@ -751,7 +842,7 @@ impl App {
             row("R", "restart terminals on this slide"),
             Line::default(),
             Line::from(Span::styled(" modes", dim)),
-            row("o", "overview"),
+            row("o", "overview (type a slide's code to jump)"),
             row("?", "this help"),
             row("q", "quit"),
             Line::default(),
@@ -819,5 +910,35 @@ impl App {
             Span::styled(" space next · o overview · ? help ", bar)
         };
         f.render_widget(Paragraph::new(Line::from(right).right_aligned()), area);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jump_codes_are_unique_and_avoid_nav_keys() {
+        for n in [1, 5, 20, 21, 100, 400] {
+            let codes = jump_codes(n);
+            assert_eq!(codes.len(), n);
+            let unique: std::collections::HashSet<_> = codes.iter().collect();
+            assert_eq!(unique.len(), codes.len());
+            for code in &codes {
+                assert!(
+                    !code.chars().any(|c| "hjkloq".contains(c)),
+                    "code {code:?} collides with overview navigation"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn jump_codes_shape() {
+        assert_eq!(jump_codes(3), vec!["a", "s", "d"]);
+        // beyond one letter per slide, all codes are uniform two-letter
+        let codes = jump_codes(21);
+        assert!(codes.iter().all(|c| c.chars().count() == 2));
+        assert_eq!(codes[0], "aa");
     }
 }
