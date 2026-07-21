@@ -187,7 +187,7 @@ fn build_slide(
 
     let mut slide = if let Some(file) = &cfg.file {
         let src = reader(file).with_context(|| format!("slide {}.{}", col + 1, row + 1))?;
-        crate::deck::parse_slide(&src, col, row, next_term_id)
+        crate::deck::parse_slide(&src, col, row, next_term_id)?
     } else if let Some(term) = &cfg.terminal {
         let title = cfg
             .title
@@ -222,7 +222,12 @@ fn build_slide(
     if let Some(notes) = cfg.notes {
         slide.notes = notes;
     }
-    slide.theme = cfg.theme;
+    // A slide file's own `theme` block merges under the manifest's
+    // per-slide theme (manifest wins field by field).
+    slide.theme = match (slide.theme.take(), cfg.theme) {
+        (Some(from_file), Some(from_manifest)) => Some(from_file.merged(from_manifest)),
+        (from_file, from_manifest) => from_manifest.or(from_file),
+    };
     Ok(slide)
 }
 
@@ -253,6 +258,7 @@ fn build_panes(
     let mut segments = Vec::new();
     let mut notes: Vec<String> = Vec::new();
     let mut title: Option<String> = None;
+    let mut theme: Option<crate::theme::ThemeConfig> = None;
     for (i, pane) in panes.into_iter().enumerate() {
         let pc = match pane {
             PaneSpec::Path(p) => PaneConfig {
@@ -265,10 +271,17 @@ fn build_panes(
             (Some(file), None) => {
                 let src = reader(file)
                     .with_context(|| format!("slide {}.{} pane {}", col + 1, row + 1, i + 1))?;
-                let parsed = crate::deck::parse_slide(&src, col, row, next_term_id);
+                let parsed = crate::deck::parse_slide(&src, col, row, next_term_id)
+                    .with_context(|| format!("slide {}.{} pane {}", col + 1, row + 1, i + 1))?;
                 title = title.or(Some(parsed.title));
                 if !parsed.notes.is_empty() {
                     notes.push(parsed.notes);
+                }
+                if let Some(pane_theme) = parsed.theme {
+                    theme = Some(match theme.take() {
+                        Some(prev) => prev.merged(pane_theme),
+                        None => pane_theme,
+                    });
                 }
                 segments.extend(parsed.segments);
             }
@@ -285,7 +298,7 @@ fn build_panes(
         title: title.unwrap_or_else(|| format!("{}.{}", col + 1, row + 1)),
         segments,
         notes: notes.join("\n\n"),
-        theme: None,
+        theme,
     })
 }
 

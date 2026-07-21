@@ -60,6 +60,23 @@ The leading block is only treated as frontmatter when it parses as a
 YAML mapping — a bare `---` at the top of a deck still just separates
 columns like it always did.
 
+Individual slides take theme overrides via a `theme` fence anywhere on
+the slide (works in single-file decks and in per-slide files referenced
+from a manifest):
+
+````markdown
+# demo time
+
+```theme
+margin: 0
+accent: red
+```
+
+```terminal rows=fill
+htop
+```
+````
+
 ### Presenter notes
 
 Everything after a bare `???` line is presenter notes for that slide:
@@ -203,11 +220,11 @@ deckhand compile deck.json -o talk.md
 deckhand talk.md
 ```
 
-The deck's title and deck-level theme are preserved as frontmatter.
-Caveats: per-slide themes and per-slide `title` overrides have no
-single-file syntax and are dropped with a warning; bare `---`/`--` lines
-inside slide bodies are rewritten to `***` so they don't split slides on
-re-parse.
+The deck's title and deck-level theme are preserved as frontmatter, and
+per-slide themes as ` ```theme ` blocks. Caveats: per-slide `title`
+overrides have no single-file syntax and fall back to what the content
+implies; bare `---`/`--` lines inside slide bodies are rewritten to `***`
+so they don't split slides on re-parse.
 
 ## Theming
 
@@ -219,10 +236,12 @@ by field (each later one wins):
   and the `deckhand notes` view
 - a top-level `"theme"` object in a JSON deck manifest, or a `theme` block
   in a single-file deck's frontmatter — per-talk styling
-- a `"theme"` object on an individual slide — per-slide overrides, scoped
-  to that slide's content (margins, width, alignment, borders, markdown
-  colors); the status bar and overview keep the deck theme. e.g. a
-  full-bleed terminal slide:
+- a `"theme"` object on an individual manifest slide, or a ` ```theme `
+  block in a slide's markdown — per-slide overrides, scoped to that
+  slide's content (margins, width, alignment, borders, markdown colors);
+  the status bar and overview keep the deck theme. When both exist for
+  one slide, the manifest's wins field by field. e.g. a full-bleed
+  terminal slide:
 
   ```json
   { "terminal": { "command": "htop" },

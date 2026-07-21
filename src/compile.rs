@@ -3,11 +3,11 @@
 //! identically (columns as `---`, depth as `--`, notes as `???`, terminals
 //! as ```terminal fences).
 //!
-//! The deck title and deck-level theme are preserved as frontmatter.
-//! Per-slide themes and slide `title` overrides have no single-file
-//! syntax and are dropped (with a warning). Bare `---`/`--` lines inside
-//! slide bodies would split slides on re-parse, so they're rewritten to
-//! `***` (also warned).
+//! The deck title and deck-level theme are preserved as frontmatter, and
+//! per-slide themes as ```theme blocks. Slide `title` overrides have no
+//! single-file syntax and fall back to what the content implies. Bare
+//! `---`/`--` lines inside slide bodies would split slides on re-parse,
+//! so they're rewritten to `***` (with a warning).
 
 use std::path::Path;
 
@@ -23,26 +23,7 @@ pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
         ..
     } = source::load(input)?;
 
-    let themed: Vec<String> = deck
-        .columns
-        .iter()
-        .enumerate()
-        .flat_map(|(c, col)| {
-            col.slides
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| s.theme.is_some())
-                .map(move |(r, _)| format!("{}.{}", c + 1, r + 1))
-        })
-        .collect();
-    if !themed.is_empty() {
-        eprintln!(
-            "warning: per-slide themes dropped on: {}",
-            themed.join(", ")
-        );
-    }
-
-    let (body, rewrites) = compile(&deck);
+    let (body, rewrites) = compile(&deck)?;
     if rewrites > 0 {
         eprintln!(
             "warning: rewrote {rewrites} bare `---`/`--` line(s) inside slide content to `***` \
@@ -72,7 +53,7 @@ pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
 
 /// Render the deck back to single-file markdown. Returns the markdown and
 /// how many separator-lookalike lines were rewritten.
-pub fn compile(deck: &Deck) -> (String, usize) {
+pub fn compile(deck: &Deck) -> Result<(String, usize)> {
     let mut out = String::new();
     let mut rewrites = 0usize;
     for (c, column) in deck.columns.iter().enumerate() {
@@ -82,6 +63,11 @@ pub fn compile(deck: &Deck) -> (String, usize) {
         for (r, slide) in column.slides.iter().enumerate() {
             if r > 0 {
                 out.push_str("--\n\n");
+            }
+            if let Some(theme) = &slide.theme {
+                out.push_str("```theme\n");
+                out.push_str(&serde_yaml::to_string(theme).context("serializing slide theme")?);
+                out.push_str("```\n\n");
             }
             for seg in &slide.segments {
                 match seg {
@@ -111,7 +97,7 @@ pub fn compile(deck: &Deck) -> (String, usize) {
             }
         }
     }
-    (out, rewrites)
+    Ok((out, rewrites))
 }
 
 /// Rewrite lines that the single-file parser would read as slide
@@ -177,10 +163,10 @@ mod tests {
         .unwrap();
 
         let (original, _) = deck::load(&dir.join("deck.json")).unwrap();
-        let (md, rewrites) = compile(&original);
+        let (md, rewrites) = compile(&original).unwrap();
         assert_eq!(rewrites, 0);
 
-        let reparsed = deck::parse(&md, "t");
+        let reparsed = deck::parse(&md, "t").unwrap();
         assert_eq!(reparsed.columns.len(), 2);
         assert_eq!(reparsed.columns[0].slides.len(), 1);
         assert_eq!(reparsed.columns[1].slides.len(), 2);
@@ -196,6 +182,31 @@ mod tests {
             }
             _ => panic!("expected terminal"),
         }
+    }
+
+    #[test]
+    fn slide_themes_round_trip() {
+        let dir = scratch("compile-slide-theme");
+        std::fs::write(dir.join("a.md"), "# alpha\n").unwrap();
+        std::fs::write(
+            dir.join("deck.json"),
+            r#"{ "columns": [ [
+                "a.md",
+                { "terminal": { "command": "htop" },
+                  "theme": { "margin": 0, "accent": "red" } }
+            ] ] }"#,
+        )
+        .unwrap();
+
+        let (original, _) = deck::load(&dir.join("deck.json")).unwrap();
+        let (md, _) = compile(&original).unwrap();
+        assert!(md.contains("```theme"));
+
+        let reparsed = deck::parse(&md, "t").unwrap();
+        assert!(reparsed.slide(0, 0).theme.is_none());
+        let theme = reparsed.slide(0, 1).theme.as_ref().unwrap();
+        assert_eq!(theme.margin, Some(0));
+        assert!(theme.accent.is_some());
     }
 
     #[test]
@@ -241,9 +252,9 @@ mod tests {
                 }],
             }],
         };
-        let (md, rewrites) = compile(&deck);
+        let (md, rewrites) = compile(&deck).unwrap();
         assert_eq!(rewrites, 1); // the fenced `---` is untouched
-        let reparsed = deck::parse(&md, "t");
+        let reparsed = deck::parse(&md, "t").unwrap();
         assert_eq!(reparsed.columns.len(), 1);
         assert_eq!(reparsed.columns[0].slides.len(), 1);
         assert!(md.contains("***"));

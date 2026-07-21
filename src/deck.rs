@@ -38,7 +38,8 @@ pub struct Slide {
     pub title: String,
     pub segments: Vec<Segment>,
     pub notes: String,
-    /// Per-slide theme overrides (JSON manifests only), layered over the
+    /// Per-slide theme overrides, from a manifest slide's `theme` field
+    /// and/or a ```theme block in the slide's markdown; layered over the
     /// deck/user theme when this slide is displayed.
     pub theme: Option<crate::theme::ThemeConfig>,
 }
@@ -151,7 +152,7 @@ pub fn parse_full(source: &str, fallback_title: &str) -> Result<(Deck, Option<Th
         },
         None => source.to_string(),
     };
-    let mut deck = parse(&body, fallback_title);
+    let mut deck = parse(&body, fallback_title)?;
     if let Some(t) = title {
         deck.title = t;
     }
@@ -178,23 +179,20 @@ fn split_frontmatter(source: &str) -> Option<(String, String)> {
     None
 }
 
-pub fn parse(source: &str, title: &str) -> Deck {
+pub fn parse(source: &str, title: &str) -> Result<Deck> {
     let mut next_term_id = 0usize;
-    let columns: Vec<Column> = split_source(source)
-        .into_iter()
-        .enumerate()
-        .map(|(c, sources)| Column {
-            slides: sources
-                .into_iter()
-                .enumerate()
-                .map(|(r, src)| parse_slide(&src, c, r, &mut next_term_id))
-                .collect(),
-        })
-        .collect();
-    Deck {
+    let mut columns = Vec::new();
+    for (c, sources) in split_source(source).into_iter().enumerate() {
+        let mut slides = Vec::new();
+        for (r, src) in sources.into_iter().enumerate() {
+            slides.push(parse_slide(&src, c, r, &mut next_term_id)?);
+        }
+        columns.push(Column { slides });
+    }
+    Ok(Deck {
         title: title.to_string(),
         columns,
-    }
+    })
 }
 
 /// Fence state: `Some((char, len))` while inside a fenced code block.
@@ -262,9 +260,10 @@ fn split_source(source: &str) -> Vec<Vec<String>> {
 }
 
 /// Parse one slide's markdown source: split off `???` notes, extract
-/// `terminal` blocks, pick a title. Used for slices of a single-file deck
-/// and for whole per-slide files referenced from a JSON manifest.
-pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) -> Slide {
+/// `terminal` and `theme` blocks, pick a title. Used for slices of a
+/// single-file deck and for whole per-slide files referenced from a JSON
+/// manifest.
+pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) -> Result<Slide> {
     // Split off presenter notes at a bare `???` line (outside fences).
     let mut body = String::new();
     let mut notes = String::new();
@@ -292,22 +291,34 @@ pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) 
         target.push('\n');
     }
 
-    let segments = parse_segments(&body, next_term_id);
+    let (segments, theme) = parse_segments(&body, next_term_id)
+        .with_context(|| format!("slide {}.{}", col + 1, row + 1))?;
     let title = extract_title(&body).unwrap_or_else(|| format!("{}.{}", col + 1, row + 1));
 
-    Slide {
+    Ok(Slide {
         title,
         segments,
         notes: notes.trim().to_string(),
-        theme: None,
-    }
+        theme,
+    })
 }
 
-fn parse_segments(body: &str, next_term_id: &mut usize) -> Vec<Segment> {
+/// A special fence being collected: a `terminal` block's body, or a
+/// `theme` block's YAML.
+enum Pending {
+    Term(TermBlock, String),
+    Theme(String),
+}
+
+fn parse_segments(
+    body: &str,
+    next_term_id: &mut usize,
+) -> Result<(Vec<Segment>, Option<ThemeConfig>)> {
     let mut segments = Vec::new();
+    let mut theme: Option<ThemeConfig> = None;
     let mut md = String::new();
     let mut fence: Fence = None;
-    let mut term: Option<(TermBlock, String)> = None; // block being collected + its body
+    let mut pending: Option<Pending> = None;
 
     let flush_md = |md: &mut String, segments: &mut Vec<Segment>| {
         if !md.trim().is_empty() {
@@ -316,26 +327,37 @@ fn parse_segments(body: &str, next_term_id: &mut usize) -> Vec<Segment> {
             md.clear();
         }
     };
+    let finish_term = |block: &mut TermBlock, tbody: &str| {
+        let script = tbody.trim();
+        block.command = (!script.is_empty()).then(|| script.to_string());
+    };
+    let merge_theme = |theme: &mut Option<ThemeConfig>, tbody: &str| -> Result<()> {
+        let cfg: ThemeConfig = serde_yaml::from_str(tbody).context("parsing `theme` block")?;
+        *theme = Some(match theme.take() {
+            Some(prev) => prev.merged(cfg),
+            None => cfg,
+        });
+        Ok(())
+    };
 
     for line in body.lines() {
         let t = line.trim();
         if let Some((ch, n)) = fence {
             if closes_fence(t, ch, n) {
                 fence = None;
-                if let Some((mut block, tbody)) = term.take() {
-                    let script = tbody.trim();
-                    block.command = if script.is_empty() {
-                        None
-                    } else {
-                        Some(script.to_string())
-                    };
-                    flush_md(&mut md, &mut segments);
-                    segments.push(Segment::Terminal(block));
-                } else {
-                    md.push_str(line);
-                    md.push('\n');
+                match pending.take() {
+                    Some(Pending::Term(mut block, tbody)) => {
+                        finish_term(&mut block, &tbody);
+                        flush_md(&mut md, &mut segments);
+                        segments.push(Segment::Terminal(block));
+                    }
+                    Some(Pending::Theme(tbody)) => merge_theme(&mut theme, &tbody)?,
+                    None => {
+                        md.push_str(line);
+                        md.push('\n');
+                    }
                 }
-            } else if let Some((_, tbody)) = term.as_mut() {
+            } else if let Some(Pending::Term(_, tbody) | Pending::Theme(tbody)) = pending.as_mut() {
                 tbody.push_str(line);
                 tbody.push('\n');
             } else {
@@ -348,51 +370,54 @@ fn parse_segments(body: &str, next_term_id: &mut usize) -> Vec<Segment> {
             fence = Some(f);
             let info = t.trim_start_matches(['`', '~']).trim();
             let mut words = info.split_whitespace();
-            if words.next() == Some("terminal") {
-                let mut rows: u16 = 12;
-                let mut fill = false;
-                for w in words {
-                    if let Some(v) = w.strip_prefix("rows=") {
-                        if v == "fill" {
-                            fill = true;
-                        } else {
-                            rows = v.parse().unwrap_or(12);
+            match words.next() {
+                Some("terminal") => {
+                    let mut rows: u16 = 12;
+                    let mut fill = false;
+                    for w in words {
+                        if let Some(v) = w.strip_prefix("rows=") {
+                            if v == "fill" {
+                                fill = true;
+                            } else {
+                                rows = v.parse().unwrap_or(12);
+                            }
                         }
                     }
+                    let id = *next_term_id;
+                    *next_term_id += 1;
+                    pending = Some(Pending::Term(
+                        TermBlock {
+                            id,
+                            command: None,
+                            rows: rows.clamp(3, 40),
+                            fill,
+                        },
+                        String::new(),
+                    ));
                 }
-                let id = *next_term_id;
-                *next_term_id += 1;
-                term = Some((
-                    TermBlock {
-                        id,
-                        command: None,
-                        rows: rows.clamp(3, 40),
-                        fill,
-                    },
-                    String::new(),
-                ));
-            } else {
-                md.push_str(line);
-                md.push('\n');
+                Some("theme") => pending = Some(Pending::Theme(String::new())),
+                _ => {
+                    md.push_str(line);
+                    md.push('\n');
+                }
             }
             continue;
         }
         md.push_str(line);
         md.push('\n');
     }
-    // Unclosed terminal fence: treat collected body as the command.
-    if let Some((mut block, tbody)) = term.take() {
-        let script = tbody.trim();
-        block.command = if script.is_empty() {
-            None
-        } else {
-            Some(script.to_string())
-        };
-        flush_md(&mut md, &mut segments);
-        segments.push(Segment::Terminal(block));
+    // Unclosed special fence at end of slide.
+    match pending.take() {
+        Some(Pending::Term(mut block, tbody)) => {
+            finish_term(&mut block, &tbody);
+            flush_md(&mut md, &mut segments);
+            segments.push(Segment::Terminal(block));
+        }
+        Some(Pending::Theme(tbody)) => merge_theme(&mut theme, &tbody)?,
+        None => {}
     }
     flush_md(&mut md, &mut segments);
-    segments
+    Ok((segments, theme))
 }
 
 fn extract_title(body: &str) -> Option<String> {
@@ -436,7 +461,7 @@ mod tests {
 
     #[test]
     fn columns_and_depth() {
-        let deck = parse("# a\n---\n# b\n--\n# b2\n---\n# c\n", "t");
+        let deck = parse("# a\n---\n# b\n--\n# b2\n---\n# c\n", "t").unwrap();
         assert_eq!(deck.columns.len(), 3);
         assert_eq!(deck.columns[0].slides.len(), 1);
         assert_eq!(deck.columns[1].slides.len(), 2);
@@ -446,7 +471,7 @@ mod tests {
 
     #[test]
     fn separators_inside_fences_are_ignored() {
-        let deck = parse("# one\n```\n---\n--\n```\nafter\n", "t");
+        let deck = parse("# one\n```\n---\n--\n```\nafter\n", "t").unwrap();
         assert_eq!(deck.columns.len(), 1);
         assert_eq!(deck.columns[0].slides.len(), 1);
         // fence content preserved in the markdown segment
@@ -458,7 +483,7 @@ mod tests {
 
     #[test]
     fn notes_split() {
-        let deck = parse("# a\nvisible\n???\nsecret note\nmore\n", "t");
+        let deck = parse("# a\nvisible\n???\nsecret note\nmore\n", "t").unwrap();
         let slide = deck.slide(0, 0);
         assert_eq!(slide.notes, "secret note\nmore");
         match &slide.segments[0] {
@@ -472,7 +497,7 @@ mod tests {
 
     #[test]
     fn terminal_block() {
-        let deck = parse("# a\nbefore\n```terminal rows=8\nhtop\n```\nafter\n", "t");
+        let deck = parse("# a\nbefore\n```terminal rows=8\nhtop\n```\nafter\n", "t").unwrap();
         let slide = deck.slide(0, 0);
         assert_eq!(slide.segments.len(), 3);
         match &slide.segments[1] {
@@ -487,11 +512,35 @@ mod tests {
 
     #[test]
     fn empty_terminal_block_is_shell() {
-        let deck = parse("```terminal\n```\n", "t");
+        let deck = parse("```terminal\n```\n", "t").unwrap();
         match &deck.slide(0, 0).segments[0] {
             Segment::Terminal(b) => assert!(b.command.is_none()),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn slide_theme_block() {
+        let deck = parse(
+            "# a\n```theme\nmargin: 0\naccent: red\n```\nbody\n---\n# b\n",
+            "t",
+        )
+        .unwrap();
+        let slide = deck.slide(0, 0);
+        let theme = slide.theme.as_ref().unwrap();
+        assert_eq!(theme.margin, Some(0));
+        // the theme block doesn't leak into rendered content
+        match &slide.segments[0] {
+            Segment::Markdown(md) => assert!(!md.contains("margin")),
+            _ => panic!(),
+        }
+        assert!(deck.slide(1, 0).theme.is_none());
+    }
+
+    #[test]
+    fn bad_slide_theme_block_errors() {
+        let err = parse("# a\n```theme\nbogus_key: 1\n```\n", "t").unwrap_err();
+        assert!(format!("{err:#}").contains("slide 1.1"));
     }
 
     #[test]
@@ -532,7 +581,7 @@ mod tests {
 
     #[test]
     fn term_ids_are_global() {
-        let deck = parse("```terminal\n```\n---\n```terminal\n```\n", "t");
+        let deck = parse("```terminal\n```\n---\n```terminal\n```\n", "t").unwrap();
         assert_eq!(deck.slide(0, 0).term_ids(), vec![0]);
         assert_eq!(deck.slide(1, 0).term_ids(), vec![1]);
     }
