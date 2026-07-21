@@ -47,6 +47,29 @@ pub fn load(input: &str) -> Result<Loaded> {
     }
 }
 
+/// Files whose changes should trigger a live reload for `input`: the
+/// deck file itself, everything a manifest references, and the user
+/// theme file. Empty for remote decks (nothing local to watch).
+pub fn watch_paths(input: &str) -> Vec<PathBuf> {
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return Vec::new();
+    }
+    let entry = PathBuf::from(input);
+    let mut out = vec![entry.clone()];
+    if entry.extension().and_then(|e| e.to_str()) == Some("json")
+        && let Ok(src) = std::fs::read_to_string(&entry)
+    {
+        let base = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
+        for rel in crate::config::referenced_files(&src) {
+            out.push(base.join(rel));
+        }
+    }
+    if let Some(theme_path) = crate::theme::user_config_path() {
+        out.push(theme_path);
+    }
+    out
+}
+
 enum Remote {
     /// Relative paths join onto this URL prefix.
     Http { base: String },

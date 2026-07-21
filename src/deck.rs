@@ -67,7 +67,7 @@ pub enum Segment {
 }
 
 /// An embedded terminal block, as authored in the deck.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermBlock {
     /// Globally unique across the deck; keys the live PTY session.
     pub id: usize,
@@ -86,7 +86,7 @@ pub struct TermBlock {
 /// A terminal screen capture: raw ANSI bytes (vt100
 /// `contents_formatted`) that replay into any terminal emulator, plus
 /// the geometry they were captured at.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermSnapshot {
     /// Width the capture was taken at.
     pub cols: u16,

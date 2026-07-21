@@ -161,6 +161,16 @@ For bigger talks, point deckhand at a manifest instead:
   slide each — no `---`/`--` splitting — but `???` notes and
   ` ```terminal ` blocks inside them still work.
 
+## Live reload
+
+Local decks **live-reload while presenting**: deckhand watches the deck
+file — and for manifests, every referenced slide and notes file, plus
+your user theme — and hot-swaps the deck when anything changes. Your
+position is kept (clamped if the deck shrank), live terminals survive
+when the deck's terminal blocks are unchanged, and a mid-edit parse
+error keeps the current deck with the error on the status bar. Disable
+with `--no-watch`. Remote decks aren't watched.
+
 ## Keys
 
 | key | action |

@@ -69,6 +69,10 @@ impl TerminalProvider for SnapshotProvider {
     fn scroll(&mut self, _: usize, _: isize) {}
     fn restart(&mut self, _: &[usize]) {}
 
+    fn reset(&mut self) {
+        self.parsers.clear();
+    }
+
     fn interactive(&self) -> bool {
         false
     }

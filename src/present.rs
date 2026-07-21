@@ -115,12 +115,18 @@ impl TerminalProvider for PtyProvider {
             self.failed.remove(id);
         }
     }
+
+    fn reset(&mut self) {
+        self.shutdown();
+        self.failed.clear();
+    }
 }
 
 /// Present a deck (a local path, URL, or gist) full-screen in the
-/// current terminal, broadcasting presenter notes on `socket`. Returns
-/// when the presenter quits.
-pub fn run(input: &str, socket: PathBuf) -> Result<()> {
+/// current terminal, broadcasting presenter notes on `socket`. With
+/// `watch`, local deck files are polled and the deck hot-reloads when
+/// they change. Returns when the presenter quits.
+pub fn run(input: &str, socket: PathBuf, watch: bool) -> Result<()> {
     let source::Loaded {
         deck,
         theme: deck_theme,
@@ -150,19 +156,34 @@ pub fn run(input: &str, socket: PathBuf) -> Result<()> {
 
     let mut terminal = ratatui::init();
     let _ = execute!(std::io::stdout(), EnableMouseCapture);
-    let result = event_loop(&mut terminal, &mut presenter, &server, started_at);
+    let result = event_loop(
+        &mut terminal,
+        &mut presenter,
+        &server,
+        started_at,
+        input,
+        watch,
+    );
     let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
     presenter.provider.shutdown();
     result
 }
 
+/// How often the live-reload watcher polls file mtimes.
+const WATCH_INTERVAL: Duration = Duration::from_millis(300);
+
 fn event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     presenter: &mut Presenter<PtyProvider>,
     server: &NotesServer,
     started_at: u64,
+    input: &str,
+    watch: bool,
 ) -> Result<()> {
+    let mut watcher = watch.then(|| Watcher::new(input));
+    let mut last_watch = std::time::Instant::now();
+
     while !presenter.should_quit() {
         terminal.draw(|f| {
             let area = f.area();
@@ -187,8 +208,86 @@ fn event_loop(
                 broadcast(server, presenter, started_at);
             }
         }
+
+        if let Some(w) = watcher.as_mut()
+            && last_watch.elapsed() >= WATCH_INTERVAL
+        {
+            last_watch = std::time::Instant::now();
+            if w.changed() {
+                reload(presenter, input, w);
+                broadcast(server, presenter, started_at);
+            }
+        }
     }
     Ok(())
+}
+
+/// Polls mtimes of the deck's files; local decks only.
+struct Watcher {
+    paths: Vec<PathBuf>,
+    stamps: Vec<Option<std::time::SystemTime>>,
+}
+
+impl Watcher {
+    fn new(input: &str) -> Self {
+        let paths = source::watch_paths(input);
+        let stamps = Self::mtimes(&paths);
+        Watcher { paths, stamps }
+    }
+
+    fn mtimes(paths: &[PathBuf]) -> Vec<Option<std::time::SystemTime>> {
+        paths
+            .iter()
+            .map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+            .collect()
+    }
+
+    /// True when any watched file's mtime moved; updates the baseline.
+    fn changed(&mut self) -> bool {
+        let current = Self::mtimes(&self.paths);
+        if current == self.stamps {
+            return false;
+        }
+        self.stamps = current;
+        true
+    }
+
+    /// Re-derive the watch list (a manifest edit can change it).
+    fn refresh(&mut self, input: &str) {
+        self.paths = source::watch_paths(input);
+        self.stamps = Self::mtimes(&self.paths);
+    }
+}
+
+/// Reload the deck from disk into the running presenter. A mid-edit
+/// parse failure keeps the current deck and reports on the status bar.
+fn reload(presenter: &mut Presenter<PtyProvider>, input: &str, watcher: &mut Watcher) {
+    let attempt = (|| -> Result<()> {
+        let source::Loaded {
+            deck,
+            theme: deck_theme,
+            ..
+        } = source::load(input)?;
+        let cfgs: Vec<ThemeConfig> = [theme::user_config()?, deck_theme]
+            .into_iter()
+            .flatten()
+            .collect();
+        presenter.replace_deck(deck, cfgs)
+    })();
+    match attempt {
+        Ok(()) => {
+            watcher.refresh(input);
+            presenter.set_status("deck reloaded");
+        }
+        Err(e) => {
+            let first = format!("{e:#}")
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            presenter.set_status(format!("reload failed: {first}"));
+        }
+    }
 }
 
 fn translate_key(k: &KeyEvent) -> Option<KeyPress> {

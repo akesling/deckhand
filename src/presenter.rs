@@ -231,6 +231,9 @@ pub trait TerminalProvider {
     }
     /// Kill and forget these terminals so they respawn (the `R` key).
     fn restart(&mut self, ids: &[usize]);
+    /// The deck was replaced and its terminal blocks changed: drop all
+    /// live terminal state so blocks start cleanly. Default: no-op.
+    fn reset(&mut self) {}
     /// Whether terminals can be focused and typed into in this context.
     fn interactive(&self) -> bool {
         true
@@ -238,6 +241,40 @@ pub trait TerminalProvider {
 }
 
 // -------------------------------------------------------------- presenter
+
+/// All terminal blocks in deck order; two decks with equal lists have
+/// identical terminal ids, so live sessions can safely carry over.
+fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
+    deck.columns
+        .iter()
+        .flat_map(|c| &c.slides)
+        .flat_map(|s| &s.segments)
+        .filter_map(|seg| match seg {
+            Segment::Terminal(b) => Some(b),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Resolve per-slide theme overrides against the base config stack.
+fn resolve_slide_themes(
+    deck: &Deck,
+    base: &[ThemeConfig],
+) -> Result<HashMap<(usize, usize), Theme>> {
+    let mut out = HashMap::new();
+    for (c, column) in deck.columns.iter().enumerate() {
+        for (r, slide) in column.slides.iter().enumerate() {
+            if let Some(cfg) = &slide.theme {
+                let mut cfgs = base.to_vec();
+                cfgs.push(cfg.clone());
+                let resolved = Theme::resolve(cfgs)
+                    .with_context(|| format!("theme for slide {}.{}", c + 1, r + 1))?;
+                out.insert((c, r), resolved);
+            }
+        }
+    }
+    Ok(out)
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
@@ -277,18 +314,7 @@ impl<P: TerminalProvider> Presenter<P> {
     pub fn new(deck: Deck, theme_cfgs: Vec<ThemeConfig>, provider: P) -> Result<Self> {
         anyhow::ensure!(!deck.columns.is_empty(), "deck contains no slides");
         let theme = Theme::resolve(theme_cfgs.clone())?;
-        let mut slide_themes = HashMap::new();
-        for (c, column) in deck.columns.iter().enumerate() {
-            for (r, slide) in column.slides.iter().enumerate() {
-                if let Some(cfg) = &slide.theme {
-                    let mut cfgs = theme_cfgs.clone();
-                    cfgs.push(cfg.clone());
-                    let resolved = Theme::resolve(cfgs)
-                        .with_context(|| format!("theme for slide {}.{}", c + 1, r + 1))?;
-                    slide_themes.insert((c, r), resolved);
-                }
-            }
-        }
+        let slide_themes = resolve_slide_themes(&deck, &theme_cfgs)?;
         let ncols = deck.columns.len();
         Ok(Presenter {
             provider,
@@ -328,6 +354,49 @@ impl<P: TerminalProvider> Presenter<P> {
     /// Whether the user asked to quit (`q` / ctrl-c).
     pub fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    /// Show a transient message in the status bar (cleared on the next
+    /// key press). Front ends use it for live-reload feedback.
+    pub fn set_status(&mut self, message: impl Into<String>) {
+        self.status = Some(message.into());
+    }
+
+    /// Swap in a rebuilt deck — e.g. after its files changed on disk —
+    /// preserving position (clamped) and, when the terminal blocks are
+    /// unchanged, live terminal state and focus. When they changed, the
+    /// provider is [`reset`](TerminalProvider::reset) so ids can't attach
+    /// to the wrong sessions.
+    pub fn replace_deck(&mut self, deck: Deck, theme_cfgs: Vec<ThemeConfig>) -> Result<()> {
+        anyhow::ensure!(!deck.columns.is_empty(), "deck contains no slides");
+        let theme = Theme::resolve(theme_cfgs.clone())?;
+        let slide_themes = resolve_slide_themes(&deck, &theme_cfgs)?;
+
+        let same_terms = term_blocks(&self.deck) == term_blocks(&deck);
+        if !same_terms {
+            self.provider.reset();
+            self.focus = None;
+            self.selected.clear();
+        }
+
+        self.deck = deck;
+        self.theme = theme;
+        self.slide_themes = slide_themes;
+
+        let ncols = self.deck.columns.len();
+        self.depth_memory.resize(ncols, 0);
+        for (c, depth) in self.depth_memory.iter_mut().enumerate() {
+            *depth = (*depth).min(self.deck.columns[c].slides.len() - 1);
+        }
+        self.col = self.col.min(ncols - 1);
+        self.row = self.row.min(self.deck.columns[self.col].slides.len() - 1);
+        if let Mode::Overview { sel: (c, r) } = self.mode {
+            let c = c.min(ncols - 1);
+            let r = r.min(self.deck.columns[c].slides.len() - 1);
+            self.mode = Mode::Overview { sel: (c, r) };
+        }
+        self.jump_input.clear();
+        Ok(())
     }
 
     // -------------------------------------------------------------- nav
@@ -1108,6 +1177,65 @@ mod tests {
         let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
         p.on_key(KeyPress::plain(Key::Char('t')));
         assert!(p.focus.is_none());
+    }
+
+    /// A provider that runs "terminals" only enough to test focus and
+    /// reset behavior.
+    struct FakeTerms {
+        resets: usize,
+    }
+    impl TerminalProvider for FakeTerms {
+        fn prepare(&mut self, _: &TermBlock, _: u16, _: u16) {}
+        fn state(&self, _: &TermBlock) -> TermState {
+            TermState::Running {
+                scroll_offset: 0,
+                scroll_total: 0,
+            }
+        }
+        fn draw(&mut self, _: &TermBlock, _: Rect, _: &mut Buffer) {}
+        fn input(&mut self, _: usize, _: &[u8]) {}
+        fn scroll(&mut self, _: usize, _: isize) {}
+        fn restart(&mut self, _: &[usize]) {}
+        fn reset(&mut self) {
+            self.resets += 1;
+        }
+    }
+
+    #[test]
+    fn replace_deck_clamps_position_and_keeps_place() {
+        let mut p = presenter();
+        p.on_key(KeyPress::plain(Key::Char('G'))); // column 3
+        assert_eq!(p.position(), (2, 0));
+
+        // Same shape: position survives.
+        let same = crate::deck::parse("# a2\n---\n# b\n--\n# b2\n---\n# c\n", "t").unwrap();
+        p.replace_deck(same, vec![]).unwrap();
+        assert_eq!(p.position(), (2, 0));
+
+        // Deck shrank to one column: position clamps.
+        let smaller = crate::deck::parse("# only\n", "t").unwrap();
+        p.replace_deck(smaller, vec![]).unwrap();
+        assert_eq!(p.position(), (0, 0));
+    }
+
+    #[test]
+    fn replace_deck_resets_terminals_only_when_they_change() {
+        let deck = crate::deck::parse("```terminal\nhtop\n```\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], FakeTerms { resets: 0 }).unwrap();
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        assert_eq!(p.focus, Some(0));
+
+        // Markdown-only edit: terminals identical → focus and sessions live on.
+        let same_terms = crate::deck::parse("new words\n```terminal\nhtop\n```\n", "t").unwrap();
+        p.replace_deck(same_terms, vec![]).unwrap();
+        assert_eq!(p.provider.resets, 0);
+        assert_eq!(p.focus, Some(0));
+
+        // Command changed: provider resets, focus drops.
+        let changed = crate::deck::parse("```terminal\nbtop\n```\n", "t").unwrap();
+        p.replace_deck(changed, vec![]).unwrap();
+        assert_eq!(p.provider.resets, 1);
+        assert_eq!(p.focus, None);
     }
 
     #[test]

@@ -313,7 +313,9 @@ impl Theme {
     }
 }
 
-fn user_config_path() -> Option<PathBuf> {
+/// Where the user-level theme lives:
+/// `$XDG_CONFIG_HOME/deckhand/theme.json` or `~/.config/deckhand/theme.json`.
+pub fn user_config_path() -> Option<PathBuf> {
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
         && !xdg.is_empty()
     {

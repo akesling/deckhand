@@ -187,6 +187,51 @@ pub fn parse_manifest(
     Ok((Deck { title, columns }, theme))
 }
 
+/// Every file path a manifest references (slides, notes files, panes),
+/// relative to the manifest — used to build live-reload watch lists.
+/// Best-effort: an unparseable manifest yields an empty list.
+pub fn referenced_files(src: &str) -> Vec<PathBuf> {
+    fn from_slide(spec: &SlideSpec, out: &mut Vec<PathBuf>) {
+        match spec {
+            SlideSpec::Path(p) => out.push(p.clone()),
+            SlideSpec::Full(cfg) => {
+                if let Some(f) = &cfg.file {
+                    out.push(f.clone());
+                }
+                if let Some(nf) = &cfg.notes_file {
+                    out.push(nf.clone());
+                }
+                for pane in cfg.panes.iter().flatten() {
+                    match pane {
+                        PaneSpec::Path(p) => out.push(p.clone()),
+                        PaneSpec::Full(pc) => {
+                            if let Some(f) = &pc.file {
+                                out.push(f.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let Ok(cfg) = serde_json::from_str::<DeckConfig>(src) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for column in &cfg.columns {
+        match column {
+            ColumnSpec::Single(s) => from_slide(s, &mut out),
+            ColumnSpec::Stack(v) => {
+                for s in v {
+                    from_slide(s, &mut out);
+                }
+            }
+        }
+    }
+    out
+}
+
 fn build_slide(
     spec: SlideSpec,
     reader: Reader,
@@ -428,6 +473,20 @@ mod tests {
         assert_eq!(deck.title, "deck");
         assert_eq!(deck.slide(0, 0).title, "remote");
         assert_eq!(deck.slide(0, 0).notes, "note");
+    }
+
+    #[test]
+    fn referenced_files_covers_every_shape() {
+        let files = referenced_files(
+            r#"{ "columns": [
+                "a.md",
+                ["b.md", { "file": "c.md", "notes_file": "n.md" }],
+                { "panes": ["p.md", { "terminal": {} }, { "file": "q.md" }] }
+            ] }"#,
+        );
+        let names: Vec<_> = files.iter().map(|p| p.to_str().unwrap()).collect();
+        assert_eq!(names, ["a.md", "b.md", "c.md", "n.md", "p.md", "q.md"]);
+        assert!(referenced_files("not json").is_empty());
     }
 
     #[test]

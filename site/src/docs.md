@@ -207,6 +207,16 @@ history, click a slide in the overview to jump.
 On slides with several terminals, each pane shows its number and ▸
 marks the one <kbd>t</kbd> will focus.
 
+## Live reload
+
+Local decks live-reload while presenting: deckhand watches the deck
+file — and for manifests, every referenced slide and notes file, plus
+your user theme — and hot-swaps the deck when anything changes. Your
+position is kept (clamped if the deck shrank), live terminals survive
+when the deck's terminal blocks are unchanged, and a mid-edit parse
+error keeps the current deck with the error shown on the status bar.
+Disable with `--no-watch`; remote decks aren't watched.
+
 ## Presenter notes over a socket
 
 `deckhand present` listens on a unix socket (default

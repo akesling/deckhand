@@ -21,18 +21,25 @@ struct Cli {
     /// Unix socket path for presenter-notes sync
     #[arg(long)]
     socket: Option<PathBuf>,
+    /// Don't live-reload when the deck's files change on disk
+    #[arg(long)]
+    no_watch: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Present a deck (a local file, a URL, or a GitHub gist)
+    /// Present a deck (a local file, a URL, or a GitHub gist). Local
+    /// decks live-reload when their files change
     Present {
         deck: String,
         /// Unix socket path for presenter-notes sync
         #[arg(long)]
         socket: Option<PathBuf>,
+        /// Don't live-reload when the deck's files change on disk
+        #[arg(long)]
+        no_watch: bool,
     },
     /// Follow presenter notes from a separate terminal
     Notes {
@@ -76,9 +83,11 @@ fn default_socket() -> PathBuf {
 pub fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Cmd::Present { deck, socket }) => {
-            present::run(&deck, socket.unwrap_or_else(default_socket))
-        }
+        Some(Cmd::Present {
+            deck,
+            socket,
+            no_watch,
+        }) => present::run(&deck, socket.unwrap_or_else(default_socket), !no_watch),
         Some(Cmd::Notes { socket }) => notes::run(socket.unwrap_or_else(default_socket)),
         Some(Cmd::Compile {
             deck,
@@ -102,7 +111,11 @@ pub fn main() -> Result<()> {
             compile::run(&deck, output.as_deref(), choice, opts)
         }
         None => match cli.deck {
-            Some(deck) => present::run(&deck, cli.socket.unwrap_or_else(default_socket)),
+            Some(deck) => present::run(
+                &deck,
+                cli.socket.unwrap_or_else(default_socket),
+                !cli.no_watch,
+            ),
             None => {
                 eprintln!("usage: deckhand <deck.md|deck.json|url> | deckhand notes");
                 eprintln!("       deckhand --help");
