@@ -14,9 +14,9 @@ use std::str::FromStr;
 use anyhow::{Context, Result, bail};
 use ratatui::style::Color;
 use ratatui::widgets::BorderType;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ColorSpec {
     Index(u8),
@@ -49,37 +49,56 @@ impl ColorSpec {
     }
 }
 
-/// All-optional theme as it appears in JSON. Missing fields fall through
-/// to the next source in the precedence chain.
-#[derive(Debug, Clone, Default, Deserialize)]
+/// All-optional theme as it appears in JSON manifests or markdown
+/// frontmatter. Missing fields fall through to the next source in the
+/// precedence chain.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeConfig {
     /// Max content width in columns (default 96).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_width: Option<u16>,
     /// Max content height in rows (default unlimited). Caps how tall the
     /// slide content box gets — including fill terminals.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_height: Option<u16>,
     /// Minimum horizontal margin per side, in columns (default 2).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub margin: Option<u16>,
     /// "center" (default) or "top".
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<String>,
     /// "plain" (default), "rounded", "double", or "thick".
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub border_type: Option<String>,
     /// Focused borders, overview selection, help border, key hints.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<ColorSpec>,
     /// Rules, hints, separators, unfocused chrome.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub muted: Option<ColorSpec>,
     /// Unfocused terminal borders.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub term_border: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status_bg: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status_fg: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub h1: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub h2: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bullet: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quote: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_code: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_bg: Option<ColorSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_fg: Option<ColorSpec>,
 }
 

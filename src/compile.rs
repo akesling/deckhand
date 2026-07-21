@@ -3,11 +3,11 @@
 //! identically (columns as `---`, depth as `--`, notes as `???`, terminals
 //! as ```terminal fences).
 //!
-//! Not everything survives the trip: the single-file format has no theme
-//! syntax, so deck- and slide-level themes are dropped (with a warning),
-//! and manifest `title` overrides fall back to whatever the slide content
-//! implies. Bare `---`/`--` lines inside slide bodies would split slides
-//! on re-parse, so they're rewritten to `***` (also warned).
+//! The deck title and deck-level theme are preserved as frontmatter.
+//! Per-slide themes and slide `title` overrides have no single-file
+//! syntax and are dropped (with a warning). Bare `---`/`--` lines inside
+//! slide bodies would split slides on re-parse, so they're rewritten to
+//! `***` (also warned).
 
 use std::path::Path;
 
@@ -23,9 +23,6 @@ pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
         ..
     } = source::load(input)?;
 
-    if deck_theme.is_some() {
-        eprintln!("warning: deck-level theme dropped (no theme syntax in single-file decks)");
-    }
     let themed: Vec<String> = deck
         .columns
         .iter()
@@ -45,13 +42,23 @@ pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
         );
     }
 
-    let (md, rewrites) = compile(&deck);
+    let (body, rewrites) = compile(&deck);
     if rewrites > 0 {
         eprintln!(
             "warning: rewrote {rewrites} bare `---`/`--` line(s) inside slide content to `***` \
              so they don't split slides on re-parse"
         );
     }
+
+    // Frontmatter preserves the deck title and deck-level theme.
+    let front = deck::FrontMatter {
+        title: Some(deck.title.clone()),
+        theme: deck_theme,
+    };
+    let mut md = String::from("---\n");
+    md.push_str(&serde_yaml::to_string(&front).context("serializing frontmatter")?);
+    md.push_str("---\n\n");
+    md.push_str(&body);
 
     match output {
         Some(path) => {
@@ -189,6 +196,28 @@ mod tests {
             }
             _ => panic!("expected terminal"),
         }
+    }
+
+    #[test]
+    fn run_preserves_title_and_theme_via_frontmatter() {
+        let dir = scratch("compile-fm");
+        std::fs::write(dir.join("a.md"), "# alpha\n").unwrap();
+        std::fs::write(
+            dir.join("deck.json"),
+            r#"{ "title": "fancy talk",
+                 "theme": { "accent": "magenta", "border_type": "rounded" },
+                 "columns": [ "a.md" ] }"#,
+        )
+        .unwrap();
+        let out = dir.join("out.md");
+        run(dir.join("deck.json").to_str().unwrap(), Some(&out)).unwrap();
+
+        let (deck, theme) = deck::load(&out).unwrap();
+        assert_eq!(deck.title, "fancy talk");
+        let theme = theme.unwrap();
+        assert_eq!(theme.border_type.as_deref(), Some("rounded"));
+        assert_eq!(deck.columns.len(), 1);
+        assert_eq!(deck.slide(0, 0).title, "alpha");
     }
 
     #[test]

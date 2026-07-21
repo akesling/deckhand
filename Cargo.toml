@@ -13,6 +13,7 @@ pulldown-cmark = { version = "0.12", default-features = false }
 ratatui = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 reqwest = "0.12"
 tokio = { version = "1", features = ["rt"] }
 tui-term = "0.2"

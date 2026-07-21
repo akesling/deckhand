@@ -1,3 +1,9 @@
+---
+title: deckhand demo
+theme:
+  border_type: rounded
+---
+
 # deckhand
 
 a slide deck, in your terminal

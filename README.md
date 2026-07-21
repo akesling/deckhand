@@ -42,6 +42,24 @@ A single-file deck uses two separators for its two dimensions:
 
 Both are ignored inside fenced code blocks.
 
+Single-file decks can open with **frontmatter** carrying a title and a
+theme (same schema as JSON manifests, see Theming):
+
+```markdown
+---
+title: my talk
+theme:
+  border_type: rounded
+  accent: magenta
+---
+
+# first slide
+```
+
+The leading block is only treated as frontmatter when it parses as a
+YAML mapping — a bare `---` at the top of a deck still just separates
+columns like it always did.
+
 ### Presenter notes
 
 Everything after a bare `???` line is presenter notes for that slide:
@@ -185,10 +203,11 @@ deckhand compile deck.json -o talk.md
 deckhand talk.md
 ```
 
-Caveats: themes (deck- and slide-level) and manifest `title` overrides
-have no single-file syntax and are dropped with a warning; bare `---`/`--`
-lines inside slide bodies are rewritten to `***` so they don't split
-slides on re-parse.
+The deck's title and deck-level theme are preserved as frontmatter.
+Caveats: per-slide themes and per-slide `title` overrides have no
+single-file syntax and are dropped with a warning; bare `---`/`--` lines
+inside slide bodies are rewritten to `***` so they don't split slides on
+re-parse.
 
 ## Theming
 
@@ -198,7 +217,8 @@ by field (each later one wins):
 - `~/.config/deckhand/theme.json` (or `$XDG_CONFIG_HOME/deckhand/theme.json`)
   — your personal defaults, applies to every deck including markdown ones
   and the `deckhand notes` view
-- a top-level `"theme"` object in a JSON deck manifest — per-talk styling
+- a top-level `"theme"` object in a JSON deck manifest, or a `theme` block
+  in a single-file deck's frontmatter — per-talk styling
 - a `"theme"` object on an individual slide — per-slide overrides, scoped
   to that slide's content (margins, width, alignment, borders, markdown
   colors); the status bar and overview keep the deck theme. e.g. a

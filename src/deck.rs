@@ -18,6 +18,9 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::theme::ThemeConfig;
 
 #[derive(Debug)]
 pub struct Deck {
@@ -88,8 +91,9 @@ impl Slide {
     }
 }
 
-/// Load a deck plus, for JSON manifests, its embedded theme config.
-pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
+/// Load a deck plus its embedded theme config (from a JSON manifest's
+/// `theme` field, or a markdown deck's frontmatter).
+pub fn load(path: &Path) -> Result<(Deck, Option<ThemeConfig>)> {
     if path.extension().and_then(|e| e.to_str()) == Some("json") {
         return crate::config::load(path);
     }
@@ -99,11 +103,79 @@ pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "deck".to_string());
-    let deck = parse(&source, &fallback);
+    let (deck, theme) = parse_full(&source, &fallback)?;
     if deck.columns.is_empty() {
         anyhow::bail!("deck {} contains no slides", path.display());
     }
-    Ok((deck, None))
+    Ok((deck, theme))
+}
+
+/// YAML frontmatter for single-file markdown decks:
+///
+/// ```markdown
+/// ---
+/// title: my talk
+/// theme:
+///   border_type: rounded
+///   accent: magenta
+/// ---
+///
+/// # first slide
+/// ```
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontMatter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<ThemeConfig>,
+}
+
+/// Parse a markdown deck, honoring optional frontmatter. A leading
+/// `---` block is only treated as frontmatter when it parses as a YAML
+/// mapping — otherwise it stays deck content (`---` also separates
+/// columns, and an empty leading column was always legal).
+pub fn parse_full(source: &str, fallback_title: &str) -> Result<(Deck, Option<ThemeConfig>)> {
+    let mut theme = None;
+    let mut title = None;
+    let body = match split_frontmatter(source) {
+        Some((raw, rest)) => match serde_yaml::from_str::<serde_yaml::Value>(&raw) {
+            Ok(serde_yaml::Value::Mapping(_)) => {
+                let fm: FrontMatter = serde_yaml::from_str(&raw)
+                    .context("parsing deck frontmatter (supported keys: title, theme)")?;
+                theme = fm.theme;
+                title = fm.title;
+                rest
+            }
+            _ => source.to_string(),
+        },
+        None => source.to_string(),
+    };
+    let mut deck = parse(&body, fallback_title);
+    if let Some(t) = title {
+        deck.title = t;
+    }
+    Ok((deck, theme))
+}
+
+/// If the source opens with a `---` line and a later `---` line closes
+/// it, return (frontmatter text, remainder).
+fn split_frontmatter(source: &str) -> Option<(String, String)> {
+    let mut iter = source.split_inclusive('\n');
+    let first = iter.next()?;
+    if first.trim_end() != "---" {
+        return None;
+    }
+    let mut fm = String::new();
+    let mut consumed = first.len();
+    for line in iter {
+        consumed += line.len();
+        if line.trim_end() == "---" {
+            return Some((fm, source[consumed..].to_string()));
+        }
+        fm.push_str(line);
+    }
+    None
 }
 
 pub fn parse(source: &str, title: &str) -> Deck {
@@ -420,6 +492,42 @@ mod tests {
             Segment::Terminal(b) => assert!(b.command.is_none()),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn frontmatter_theme_and_title() {
+        let src = "---\ntitle: my talk\ntheme:\n  accent: magenta\n  max_width: 80\n---\n\n# a\n---\n# b\n";
+        let (deck, theme) = parse_full(src, "fallback").unwrap();
+        assert_eq!(deck.title, "my talk");
+        assert_eq!(deck.columns.len(), 2);
+        let theme = theme.unwrap();
+        assert_eq!(theme.max_width, Some(80));
+        let resolved = crate::theme::Theme::resolve(vec![theme]).unwrap();
+        assert_eq!(resolved.accent, ratatui::style::Color::Magenta);
+    }
+
+    #[test]
+    fn no_frontmatter_is_unchanged() {
+        let (deck, theme) = parse_full("# a\nhello\n", "fallback").unwrap();
+        assert!(theme.is_none());
+        assert_eq!(deck.title, "fallback");
+        assert_eq!(deck.columns.len(), 1);
+    }
+
+    #[test]
+    fn non_mapping_leading_block_stays_content() {
+        // `---` has always also meant "column separator"; only a YAML
+        // mapping is claimed as frontmatter.
+        let src = "---\njust some text\n---\nreal slide\n";
+        let (deck, theme) = parse_full(src, "fallback").unwrap();
+        assert!(theme.is_none());
+        assert_eq!(deck.columns.len(), 2);
+    }
+
+    #[test]
+    fn bad_frontmatter_errors() {
+        let src = "---\ntitle: x\nbogus_key: 1\n---\n# a\n";
+        assert!(parse_full(src, "fallback").is_err());
     }
 
     #[test]

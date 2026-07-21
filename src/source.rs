@@ -75,11 +75,11 @@ fn load_remote(url: &str) -> Result<Loaded> {
         crate::config::parse_manifest(&src, url, &reader)?
     } else {
         let fallback = entry.trim_end_matches(".md").trim_end_matches(".markdown");
-        let deck = deck::parse(&src, fallback);
+        let (deck, theme) = deck::parse_full(&src, fallback)?;
         if deck.columns.is_empty() {
             bail!("{url}: deck contains no slides");
         }
-        (deck, None)
+        (deck, theme)
     };
     Ok(Loaded {
         deck,
