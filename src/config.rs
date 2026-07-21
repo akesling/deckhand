@@ -99,16 +99,35 @@ pub struct TermConfig {
     pub rows: Option<u16>,
 }
 
+/// Fetches a slide/notes file referenced by a manifest, given its
+/// manifest-relative path. Local decks read the filesystem; remote decks
+/// fetch over HTTP (see `source.rs`).
+pub type Reader<'a> = &'a dyn Fn(&Path) -> Result<String>;
+
 pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
     let src = std::fs::read_to_string(path)
         .with_context(|| format!("reading deck config {}", path.display()))?;
-    let mut cfg: DeckConfig = serde_json::from_str(&src)
-        .with_context(|| format!("parsing deck config {}", path.display()))?;
+    let base = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let reader = move |p: &Path| -> Result<String> {
+        let full = base.join(p);
+        std::fs::read_to_string(&full).with_context(|| format!("reading {}", full.display()))
+    };
+    parse_manifest(&src, &path.display().to_string(), &reader)
+}
+
+/// Parse a manifest from source text, resolving referenced files through
+/// `reader`. `label` names the manifest in errors and title fallbacks.
+pub fn parse_manifest(
+    src: &str,
+    label: &str,
+    reader: Reader,
+) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
+    let mut cfg: DeckConfig =
+        serde_json::from_str(src).with_context(|| format!("parsing deck config {label}"))?;
     let theme = cfg.theme.take();
-    let base = path.parent().unwrap_or(Path::new("."));
 
     if cfg.columns.is_empty() {
-        bail!("{}: deck has no columns", path.display());
+        bail!("{label}: deck has no columns");
     }
     let mut next_term_id = 0usize;
     let mut columns = Vec::new();
@@ -118,17 +137,18 @@ pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
             ColumnSpec::Stack(v) => v,
         };
         if specs.is_empty() {
-            bail!("{}: column {} is empty", path.display(), c + 1);
+            bail!("{label}: column {} is empty", c + 1);
         }
         let mut slides = Vec::new();
         for (r, spec) in specs.into_iter().enumerate() {
-            slides.push(build_slide(spec, base, c, r, &mut next_term_id)?);
+            slides.push(build_slide(spec, reader, c, r, &mut next_term_id)?);
         }
         columns.push(Column { slides });
     }
 
     let title = cfg.title.unwrap_or_else(|| {
-        path.file_stem()
+        Path::new(label)
+            .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "deck".to_string())
     });
@@ -137,7 +157,7 @@ pub fn load(path: &Path) -> Result<(Deck, Option<crate::theme::ThemeConfig>)> {
 
 fn build_slide(
     spec: SlideSpec,
-    base: &Path,
+    reader: Reader,
     col: usize,
     row: usize,
     next_term_id: &mut usize,
@@ -166,9 +186,7 @@ fn build_slide(
     }
 
     let mut slide = if let Some(file) = &cfg.file {
-        let p = base.join(file);
-        let src = std::fs::read_to_string(&p)
-            .with_context(|| format!("slide {}.{}: reading {}", col + 1, row + 1, p.display()))?;
+        let src = reader(file).with_context(|| format!("slide {}.{}", col + 1, row + 1))?;
         crate::deck::parse_slide(&src, col, row, next_term_id)
     } else if let Some(term) = &cfg.terminal {
         let title = cfg
@@ -189,23 +207,15 @@ fn build_slide(
         }
     } else {
         let panes = cfg.panes.take().expect("checked above");
-        build_panes(panes, base, col, row, next_term_id)?
+        build_panes(panes, reader, col, row, next_term_id)?
     };
 
     if let Some(title) = cfg.title {
         slide.title = title;
     }
     if let Some(nf) = cfg.notes_file {
-        let p = base.join(&nf);
-        slide.notes = std::fs::read_to_string(&p)
-            .with_context(|| {
-                format!(
-                    "slide {}.{}: reading notes {}",
-                    col + 1,
-                    row + 1,
-                    p.display()
-                )
-            })?
+        slide.notes = reader(&nf)
+            .with_context(|| format!("slide {}.{}: notes_file", col + 1, row + 1))?
             .trim()
             .to_string();
     }
@@ -232,7 +242,7 @@ fn term_segment(term: &TermConfig, next_term_id: &mut usize) -> Segment {
 /// title names the slide unless the slide config overrides it.
 fn build_panes(
     panes: Vec<PaneSpec>,
-    base: &Path,
+    reader: Reader,
     col: usize,
     row: usize,
     next_term_id: &mut usize,
@@ -253,16 +263,8 @@ fn build_panes(
         };
         match (&pc.file, &pc.terminal) {
             (Some(file), None) => {
-                let p = base.join(file);
-                let src = std::fs::read_to_string(&p).with_context(|| {
-                    format!(
-                        "slide {}.{} pane {}: reading {}",
-                        col + 1,
-                        row + 1,
-                        i + 1,
-                        p.display()
-                    )
-                })?;
+                let src = reader(file)
+                    .with_context(|| format!("slide {}.{} pane {}", col + 1, row + 1, i + 1))?;
                 let parsed = crate::deck::parse_slide(&src, col, row, next_term_id);
                 title = title.or(Some(parsed.title));
                 if !parsed.notes.is_empty() {
@@ -359,6 +361,27 @@ mod tests {
             }
             _ => panic!("expected terminal slide"),
         }
+    }
+
+    #[test]
+    fn manifest_with_in_memory_reader() {
+        // The reader abstraction is what lets manifests load over HTTP —
+        // prove the manifest path never touches the filesystem directly.
+        let reader = |p: &std::path::Path| -> anyhow::Result<String> {
+            match p.to_string_lossy().as_ref() {
+                "a.md" => Ok("# remote\n???\nnote\n".to_string()),
+                other => anyhow::bail!("unexpected read: {other}"),
+            }
+        };
+        let (deck, _) = parse_manifest(
+            r#"{ "columns": [ "a.md" ] }"#,
+            "https://x/deck.json",
+            &reader,
+        )
+        .unwrap();
+        assert_eq!(deck.title, "deck");
+        assert_eq!(deck.slide(0, 0).title, "remote");
+        assert_eq!(deck.slide(0, 0).notes, "note");
     }
 
     #[test]

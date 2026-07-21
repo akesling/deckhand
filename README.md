@@ -155,6 +155,26 @@ its history, and in the overview click a slide to jump to it. (Mouse
 events aren't forwarded into the PTY yet, so apps like htop stay
 keyboard-driven.)
 
+## Presenting from a URL or gist
+
+Any deck argument can be a URL:
+
+```sh
+deckhand https://example.com/talks/deck.md
+deckhand https://gist.github.com/alex/abc123
+deckhand compile https://gist.github.com/alex/abc123 -o talk.md
+```
+
+- A plain URL fetches that file. JSON manifests work remotely too —
+  their relative paths (slides, `notes_file`) fetch against the
+  manifest's URL.
+- A **gist page URL** is resolved through the GitHub API: deckhand looks
+  at the gist's files and picks the deck by priority — `deck.json`, then
+  `deck.md`, then the only file, then the first `.md`. A gist containing
+  `deck.json` plus slide files works as a full multi-file deck (manifest
+  paths resolve against the gist's filenames).
+- Embedded terminals in remote decks run in your current directory.
+
 ### Compiling a manifest to one file
 
 `deckhand compile` flattens a JSON deck into a single markdown file that

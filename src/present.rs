@@ -1,7 +1,7 @@
 //! The presenter TUI.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -19,10 +19,11 @@ use ratatui::widgets::{
 };
 use tui_term::widget::PseudoTerminal;
 
-use crate::deck::{self, Deck, Segment, TermBlock};
+use crate::deck::{Deck, Segment, TermBlock};
 use crate::markdown;
 use crate::proto::NotesState;
 use crate::server::NotesServer;
+use crate::source;
 use crate::term::{TermSession, key_to_bytes};
 use crate::theme::{self, Theme, ThemeConfig, VAlign};
 
@@ -63,8 +64,12 @@ pub struct App {
     quit: bool,
 }
 
-pub fn run(deck_path: &Path, socket: PathBuf) -> Result<()> {
-    let (deck, deck_theme) = deck::load(deck_path)?;
+pub fn run(input: &str, socket: PathBuf) -> Result<()> {
+    let source::Loaded {
+        deck,
+        theme: deck_theme,
+        base_dir: deck_dir,
+    } = source::load(input)?;
     let base_cfgs: Vec<ThemeConfig> = [theme::user_config()?, deck_theme]
         .into_iter()
         .flatten()
@@ -82,11 +87,6 @@ pub fn run(deck_path: &Path, socket: PathBuf) -> Result<()> {
             }
         }
     }
-    let deck_dir = deck_path
-        .canonicalize()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| PathBuf::from("."));
     let server = NotesServer::start(socket.clone()).context("starting presenter-notes server")?;
     let started_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)

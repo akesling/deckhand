@@ -6,6 +6,7 @@ mod notes;
 mod present;
 mod proto;
 mod server;
+mod source;
 mod term;
 mod theme;
 
@@ -22,9 +23,9 @@ use clap::{Parser, Subcommand};
     args_conflicts_with_subcommands = true
 )]
 struct Cli {
-    /// Deck to present: a markdown file or a JSON manifest
-    /// (shorthand for `deckhand present <deck>`)
-    deck: Option<PathBuf>,
+    /// Deck to present: a markdown file, a JSON manifest, a URL, or a
+    /// GitHub gist (shorthand for `deckhand present <deck>`)
+    deck: Option<String>,
     /// Unix socket path for presenter-notes sync
     #[arg(long)]
     socket: Option<PathBuf>,
@@ -34,9 +35,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Present a deck
+    /// Present a deck (a local file, a URL, or a GitHub gist)
     Present {
-        deck: PathBuf,
+        deck: String,
         /// Unix socket path for presenter-notes sync
         #[arg(long)]
         socket: Option<PathBuf>,
@@ -49,7 +50,7 @@ enum Cmd {
     },
     /// Flatten a deck (e.g. a JSON manifest) into one markdown file
     Compile {
-        deck: PathBuf,
+        deck: String,
         /// Write here instead of stdout
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -71,7 +72,7 @@ fn main() -> Result<()> {
         None => match cli.deck {
             Some(deck) => present::run(&deck, cli.socket.unwrap_or_else(default_socket)),
             None => {
-                eprintln!("usage: deckhand <deck.md|deck.json> | deckhand notes");
+                eprintln!("usage: deckhand <deck.md|deck.json|url> | deckhand notes");
                 eprintln!("       deckhand --help");
                 std::process::exit(2);
             }

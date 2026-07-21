@@ -14,9 +14,14 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::deck::{self, Deck, Segment};
+use crate::source;
 
-pub fn run(input: &Path, output: Option<&Path>) -> Result<()> {
-    let (deck, deck_theme) = deck::load(input)?;
+pub fn run(input: &str, output: Option<&Path>) -> Result<()> {
+    let source::Loaded {
+        deck,
+        theme: deck_theme,
+        ..
+    } = source::load(input)?;
 
     if deck_theme.is_some() {
         eprintln!("warning: deck-level theme dropped (no theme syntax in single-file decks)");
