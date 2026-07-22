@@ -268,6 +268,17 @@ fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
 /// Columns of blank space between row cells.
 const ROW_GAP: u16 = 2;
 
+/// First visible index for a one-axis viewport of `vis` slots over
+/// `total` items: keeps `sel` one slot in from the trailing edge while
+/// more items exist beyond it, so the neighbor you're heading toward
+/// is always in view.
+fn viewport_offset(sel: usize, total: usize, vis: usize) -> usize {
+    if total <= vis {
+        return 0;
+    }
+    (sel + 2).saturating_sub(vis).min(total - vis).min(sel)
+}
+
 /// If markdown source opens with a heading (blank lines aside), split
 /// it off: (heading line, everything after). Feeds `pin_title`.
 fn split_leading_heading(src: &str) -> Option<(String, String)> {
@@ -1269,19 +1280,30 @@ impl<P: TerminalProvider> Presenter<P> {
         Paragraph::new(Line::from(header)).render(Rect { height: 1, ..area }, buf);
         let codes: HashMap<(usize, usize), String> = self.overview_codes().into_iter().collect();
 
+        // One row under the grid is always reserved for the clip bar
+        // (markers for slides scrolled out of view) so the grid never
+        // reflows when scrolling starts.
         let grid = Rect {
             x: area.x,
             y: area.y + 1,
             width: area.width,
-            height: area.height.saturating_sub(1),
+            height: area.height.saturating_sub(2),
         };
         if grid.width < bw || grid.height < bh {
             return;
         }
         let vis_cols = (grid.width / bw).max(1) as usize;
         let vis_rows = (grid.height / bh).max(1) as usize;
-        let off_c = sel.0.saturating_sub(vis_cols - 1);
-        let off_r = sel.1.saturating_sub(vis_rows - 1);
+        let n_cols = self.deck.columns.len();
+        let max_depth = self
+            .deck
+            .columns
+            .iter()
+            .map(|c| c.slides.len())
+            .max()
+            .unwrap_or(0);
+        let off_c = viewport_offset(sel.0, n_cols, vis_cols);
+        let off_r = viewport_offset(sel.1, max_depth, vis_rows);
 
         for (ci, column) in self.deck.columns.iter().enumerate() {
             if ci < off_c || ci >= off_c + vis_cols {
@@ -1343,6 +1365,60 @@ impl<P: TerminalProvider> Presenter<P> {
                 }
                 Paragraph::new(label).render(inner, buf);
             }
+        }
+
+        // Clip bar: how many slides are scrolled out of view, per
+        // direction, sitting right under the drawn rows. Depth counts
+        // only consider visible columns — a column you can't see
+        // shouldn't advertise its deep slides.
+        let hidden_left = off_c;
+        let hidden_right = n_cols.saturating_sub(off_c + vis_cols);
+        let hidden_above = off_r;
+        let vis_depth = self
+            .deck
+            .columns
+            .iter()
+            .skip(off_c)
+            .take(vis_cols)
+            .map(|c| c.slides.len())
+            .max()
+            .unwrap_or(0);
+        let hidden_below = vis_depth.saturating_sub(off_r + vis_rows);
+        if hidden_left + hidden_right + hidden_above + hidden_below == 0 {
+            return;
+        }
+        let rows_drawn = vis_depth.saturating_sub(off_r).clamp(1, vis_rows) as u16;
+        let bar = Rect {
+            x: grid.x,
+            y: grid.y + rows_drawn * bh,
+            width: grid.width,
+            height: 1,
+        };
+        let style = Style::default()
+            .fg(self.theme.accent)
+            .add_modifier(Modifier::BOLD);
+        if hidden_left > 0 {
+            Paragraph::new(Span::styled(format!("◂ {hidden_left}"), style)).render(bar, buf);
+        }
+        if hidden_right > 0 {
+            Paragraph::new(Line::from(Span::styled(format!("{hidden_right} ▸"), style)))
+                .alignment(ratatui::layout::Alignment::Right)
+                .render(bar, buf);
+        }
+        if hidden_above + hidden_below > 0 {
+            let mut mid = String::new();
+            if hidden_above > 0 {
+                mid.push_str(&format!("▴ {hidden_above}"));
+            }
+            if hidden_below > 0 {
+                if !mid.is_empty() {
+                    mid.push_str(" · ");
+                }
+                mid.push_str(&format!("▾ {hidden_below}"));
+            }
+            Paragraph::new(Line::from(Span::styled(mid, style)))
+                .alignment(ratatui::layout::Alignment::Center)
+                .render(bar, buf);
         }
     }
 
@@ -1490,6 +1566,81 @@ mod tests {
         assert_eq!(p.position(), (1, 0));
         p.on_key(KeyPress::plain(Key::Char('G')));
         assert_eq!(p.position(), (2, 0));
+    }
+
+    #[test]
+    fn viewport_offset_keeps_a_margin() {
+        // Fits: never scrolls.
+        assert_eq!(viewport_offset(3, 4, 4), 0);
+        // Selection stays one slot in from the trailing edge…
+        assert_eq!(viewport_offset(3, 10, 4), 1);
+        assert_eq!(viewport_offset(5, 10, 4), 3);
+        // …except at the very ends, where there's nothing beyond.
+        assert_eq!(viewport_offset(0, 10, 4), 0);
+        assert_eq!(viewport_offset(9, 10, 4), 6);
+        // Degenerate one-slot viewport still shows the selection.
+        assert_eq!(viewport_offset(7, 10, 1), 7);
+    }
+
+    #[test]
+    fn overview_clip_bar_counts_hidden_slides() {
+        // 8 columns; the first is 3 deep. 60x14 fits 2 columns × 2 rows
+        // of boxes (26x4 each) plus header and clip bar.
+        let mut src = String::from("# c1\n--\n# c1b\n--\n# c1c\n");
+        for i in 2..=8 {
+            src.push_str(&format!("---\n# c{i}\n"));
+        }
+        let deck = crate::deck::parse(&src, "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        p.on_key(KeyPress::plain(Key::Char('o')));
+        let area = Rect::new(0, 0, 60, 14);
+        let screen = |p: &mut Presenter<NullProvider>| {
+            let mut buf = Buffer::empty(area);
+            p.draw(area, &mut buf);
+            (0..area.height)
+                .map(|y| {
+                    (0..area.width)
+                        .map(|x| buf[(x, y)].symbol().to_string())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        // At the start: 6 columns hidden right, 1 slide hidden below.
+        let s = screen(&mut p);
+        assert!(s.contains("6 ▸"), "screen:\n{s}");
+        assert!(s.contains("▾ 1"), "screen:\n{s}");
+        assert!(!s.contains('◂'), "screen:\n{s}");
+
+        // At the last column: everything hidden is to the left, and the
+        // shallow visible columns advertise no hidden depth.
+        p.on_key(KeyPress::plain(Key::Esc));
+        p.on_key(KeyPress::plain(Key::Char('G')));
+        p.on_key(KeyPress::plain(Key::Char('o')));
+        let s = screen(&mut p);
+        assert!(s.contains("◂ 6"), "screen:\n{s}");
+        assert!(!s.contains('▸'), "screen:\n{s}");
+        assert!(!s.contains('▾'), "screen:\n{s}");
+    }
+
+    #[test]
+    fn overview_clip_bar_absent_when_everything_fits() {
+        let deck = crate::deck::parse("# a\n---\n# b\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        p.on_key(KeyPress::plain(Key::Char('o')));
+        let area = Rect::new(0, 0, 60, 14);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let mut screen = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                screen.push_str(buf[(x, y)].symbol());
+            }
+        }
+        for glyph in ["◂", "▸", "▴", "▾"] {
+            assert!(!screen.contains(glyph), "unexpected {glyph}");
+        }
     }
 
     #[test]
