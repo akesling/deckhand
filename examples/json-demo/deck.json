@@ -20,6 +20,11 @@
       { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }
     ],
     [
+      "slides/code.md",
+      { "file": "slides/code-deep.md",
+        "notes": "Same tokenizer in the browser presenter — no grammar engine, tiny wasm." }
+    ],
+    [
       "slides/titles.md",
       "slides/titles-deep.md",
       { "file": "slides/titles-float.md",
