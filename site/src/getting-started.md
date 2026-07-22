@@ -75,11 +75,13 @@ python3 -q
 ```
 ````
 
-The REPL is already running when the slide appears. Press `t` to focus
-it — every key goes to the terminal — and `Ctrl-q` to get back to the
-deck. If a demo goes sideways, `R` restarts the slide's terminals.
-Leave the body empty for an interactive shell, or use `rows=fill` to
-fill the slide.
+The slide shows the command; press `t`, then `y` to run it — nothing
+executes without your say-so. Once running, `t` focuses it (every key
+goes to the terminal), `Ctrl-q` returns to the deck, `s` stops it, and
+`R` restarts it if a demo goes sideways. Prefer the old behavior? Pass
+`--eager` and terminals start the moment their slide appears. Leave the
+body empty for an interactive shell, or use `rows=fill` to fill the
+slide.
 
 ## Add presenter notes
 

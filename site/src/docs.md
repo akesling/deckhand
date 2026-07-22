@@ -68,8 +68,13 @@ python3 -q
   shell — the working directory is the deck's directory
 - `rows=N` sets the viewport height (default 12, max 40); `rows=fill`
   expands to all remaining slide height
-- terminals spawn when their slide is first shown, keep running while
-  you navigate elsewhere, and die when deckhand exits
+- **nothing executes without consent**: each terminal shows the command
+  it *would* run until you approve it in-deck — <kbd>t</kbd> (or click),
+  then <kbd>y</kbd>; <kbd>s</kbd> stops it again, <kbd>R</kbd> restarts
+  it. `--eager` starts every terminal automatically when its slide first
+  appears
+- once running, terminals keep running while you navigate elsewhere,
+  and die when deckhand exits
 - each terminal keeps 10,000 lines of history with a scrollbar on its
   right border once there's something to scroll
 - multiple terminal blocks on one slide stack vertically; fill-height
@@ -192,10 +197,10 @@ including fill terminals.
 | <kbd>g</kbd>, <kbd>G</kbd> | first / last column |
 | <kbd>o</kbd> | overview — type a slide's jump code, or <kbd>hjkl</kbd> + <kbd>enter</kbd>, or click |
 | <kbd>1</kbd>–<kbd>9</kbd> | select a terminal pane (marked with ▸) |
-| <kbd>t</kbd>, <kbd>enter</kbd> | focus the selected terminal |
+| <kbd>t</kbd>, <kbd>enter</kbd> | run (after <kbd>y</kbd>) / focus the selected terminal |
 | <kbd>Ctrl-q</kbd> | release terminal focus |
 | <kbd>shift-pgup</kbd>/<kbd>pgdn</kbd> | scroll terminal history (also <kbd>shift-↑</kbd>/<kbd>↓</kbd>) |
-| <kbd>R</kbd> | restart this slide's terminals |
+| <kbd>s</kbd> / <kbd>R</kbd> | stop / restart the selected terminal |
 | <kbd>?</kbd> | help |
 | <kbd>q</kbd> | quit |
 

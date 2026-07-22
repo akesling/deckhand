@@ -5,7 +5,7 @@
 //! terminal screen out, real PTYs via [`PtyProvider`], and the
 //! presenter-notes broadcast over the unix socket.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -17,7 +17,9 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::execute;
 use ratatui::layout::Rect;
-use ratatui::widgets::Widget;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Widget};
 use tui_term::widget::PseudoTerminal;
 
 use crate::deck::TermBlock;
@@ -28,13 +30,19 @@ use crate::source;
 use crate::term::TermSession;
 use crate::theme::{self, ThemeConfig};
 
-/// Real PTYs: spawns each terminal block as a child process the first
-/// time it's shown, keeps it running while you navigate elsewhere. The
-/// reference [`TerminalProvider`] implementation.
+/// Real PTYs: each terminal block shows its command until the presenter
+/// approves it in-deck (`t`, then `y`); `--eager` spawns on first view
+/// instead. The reference [`TerminalProvider`] implementation.
 pub struct PtyProvider {
     deck_dir: PathBuf,
     sessions: HashMap<usize, TermSession>,
     failed: HashMap<usize, String>,
+    /// Spawn on first view without per-block approval.
+    eager: bool,
+    /// Blocks approved in-deck with `y`.
+    approved: HashSet<usize>,
+    /// Blocks stopped with `s`; overrides `eager` so they stay down.
+    stopped: HashSet<usize>,
 }
 
 impl PtyProvider {
@@ -43,10 +51,18 @@ impl PtyProvider {
             s.kill();
         }
     }
+
+    /// May this block execute right now?
+    fn allowed(&self, id: usize) -> bool {
+        !self.stopped.contains(&id) && (self.eager || self.approved.contains(&id))
+    }
 }
 
 impl TerminalProvider for PtyProvider {
     fn prepare(&mut self, block: &TermBlock, cols: u16, rows: u16) {
+        if !self.allowed(block.id) {
+            return;
+        }
         let cols = cols.max(4);
         let rows = rows.max(2);
         if self.failed.contains_key(&block.id) {
@@ -68,6 +84,9 @@ impl TerminalProvider for PtyProvider {
     }
 
     fn state(&self, block: &TermBlock) -> TermState {
+        if !self.allowed(block.id) {
+            return TermState::Disabled;
+        }
         if let Some(msg) = self.failed.get(&block.id) {
             return TermState::Failed(msg.clone());
         }
@@ -89,6 +108,30 @@ impl TerminalProvider for PtyProvider {
     }
 
     fn draw(&mut self, block: &TermBlock, inner: Rect, buf: &mut Buffer) {
+        if !self.allowed(block.id) {
+            // Show exactly what approval would run.
+            let muted = Style::default().fg(Color::Indexed(244));
+            let mut lines = vec![Line::default()];
+            match block.command.as_deref() {
+                Some(command) => {
+                    for (i, part) in command.lines().enumerate() {
+                        let prefix = if i == 0 { "  $ " } else { "    " };
+                        lines.push(Line::from(Span::styled(format!("{prefix}{part}"), muted)));
+                    }
+                }
+                None => lines.push(Line::from(Span::styled(
+                    "  $SHELL (interactive shell)",
+                    muted,
+                ))),
+            }
+            lines.push(Line::default());
+            lines.push(Line::from(Span::styled(
+                "  not running — press t, then y to run",
+                muted.add_modifier(Modifier::ITALIC),
+            )));
+            Paragraph::new(lines).render(inner, buf);
+            return;
+        }
         if let Some(session) = self.sessions.get(&block.id) {
             let parser = session.parser.lock().unwrap();
             PseudoTerminal::new(parser.screen()).render(inner, buf);
@@ -119,14 +162,36 @@ impl TerminalProvider for PtyProvider {
     fn reset(&mut self) {
         self.shutdown();
         self.failed.clear();
+        // Terminal blocks changed identity; approvals no longer apply.
+        self.approved.clear();
+        self.stopped.clear();
+    }
+
+    fn enable(&mut self, id: usize) {
+        self.approved.insert(id);
+        self.stopped.remove(&id);
+    }
+
+    fn stop(&mut self, id: usize) {
+        if let Some(mut s) = self.sessions.remove(&id) {
+            s.kill();
+        }
+        self.failed.remove(&id);
+        self.approved.remove(&id);
+        self.stopped.insert(id);
     }
 }
 
 /// Present a deck (a local path, URL, or gist) full-screen in the
 /// current terminal, broadcasting presenter notes on `socket`. With
 /// `watch`, local deck files are polled and the deck hot-reloads when
-/// they change. Returns when the presenter quits.
-pub fn run(input: &str, socket: PathBuf, watch: bool) -> Result<()> {
+/// they change.
+///
+/// Terminal blocks don't execute anything by default — each shows its
+/// command until approved in-deck (`t`, then `y`). With `eager`, blocks
+/// spawn as soon as their slide is shown. Returns when the presenter
+/// quits.
+pub fn run(input: &str, socket: PathBuf, watch: bool, eager: bool) -> Result<()> {
     let source::Loaded {
         deck,
         theme: deck_theme,
@@ -136,10 +201,14 @@ pub fn run(input: &str, socket: PathBuf, watch: bool) -> Result<()> {
         .into_iter()
         .flatten()
         .collect();
+
     let provider = PtyProvider {
         deck_dir: base_dir,
         sessions: HashMap::new(),
         failed: HashMap::new(),
+        eager,
+        approved: HashSet::new(),
+        stopped: HashSet::new(),
     };
     let mut presenter = Presenter::new(deck, cfgs, provider)?;
     presenter.help_footer = Some(format!(

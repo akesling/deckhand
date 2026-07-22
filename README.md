@@ -109,8 +109,13 @@ python3 -q
   interactive shell.
 - `rows=N` sets the viewport height (default 12, max 40); `rows=fill`
   expands it to all remaining slide height.
-- Terminals start when their slide is first shown, keep running while you
-  navigate elsewhere, and die when deckhand exits.
+- **Nothing executes without consent**: by default each terminal shows
+  the command it *would* run, and you approve it in-deck — press `t`
+  (or click), then `y`. `s` stops a terminal (back to its command
+  preview), `R` restarts it. Pass `--eager` to start every terminal
+  automatically when its slide first appears.
+- Once running, terminals keep running while you navigate elsewhere,
+  and die when deckhand exits.
 - Each terminal keeps 10,000 lines of history: while focused,
   `shift-pgup`/`shift-pgdn` scroll it (half a page at a time), `shift-↑`/
   `shift-↓` go line by line, and typing anything snaps back to live.
@@ -182,10 +187,10 @@ with `--no-watch`. Remote decks aren't watched.
 | `g`, `G` | first / last column |
 | `o` | overview grid — each slide shows a short code; type it to jump (or `hjkl` + `enter`, or click) |
 | `1`-`9` | select a terminal pane (marked with `▸`) |
-| `t`, `enter` | focus the selected terminal |
+| `t`, `enter` | run (after a `y` confirmation) / focus the selected terminal |
 | `Ctrl-q` | release terminal focus |
 | `shift-pgup`/`shift-pgdn` | scroll terminal history (also `shift-↑`/`shift-↓`) |
-| `R` | restart this slide's terminals |
+| `s` / `R` | stop / restart the selected terminal |
 | `?` | help |
 | `q` | quit |
 

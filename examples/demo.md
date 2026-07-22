@@ -100,8 +100,8 @@ python3 -q
 
 ???
 
-The python REPL is already running — no fumbling at the prompt.
-Try 2**64 or import this.
+Press t then y to start the REPL (or present with --eager to skip
+the confirmation). Try 2**64 or import this.
 
 ---
 

@@ -103,6 +103,27 @@ impl Deck {
         &self.columns[col].slides[row]
     }
 
+    /// First-line labels of every terminal command in the deck, in
+    /// order (`"shell"` for blocks with no command). Used for consent
+    /// prompts before anything executes.
+    pub fn terminal_commands(&self) -> Vec<String> {
+        self.columns
+            .iter()
+            .flat_map(|c| &c.slides)
+            .flat_map(|s| &s.segments)
+            .filter_map(|seg| match seg {
+                Segment::Terminal(b) => Some(
+                    b.command
+                        .as_deref()
+                        .and_then(|c| c.lines().next())
+                        .unwrap_or("shell")
+                        .to_string(),
+                ),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Depth-first traversal order: all slides of column 0 top-to-bottom,
     /// then column 1, etc. This is the order `space` walks through.
     pub fn flat(&self) -> Vec<(usize, usize)> {

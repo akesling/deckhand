@@ -35,22 +35,7 @@ pub fn run(
         base_dir,
     } = source::load(input)?;
 
-    let commands: Vec<String> = deck
-        .columns
-        .iter()
-        .flat_map(|c| &c.slides)
-        .flat_map(|s| &s.segments)
-        .filter_map(|seg| match seg {
-            Segment::Terminal(b) => Some(
-                b.command
-                    .as_deref()
-                    .and_then(|c| c.lines().next())
-                    .unwrap_or("shell")
-                    .to_string(),
-            ),
-            _ => None,
-        })
-        .collect();
+    let commands = deck.terminal_commands();
     if !commands.is_empty() {
         match snapshots {
             Some(true) => {

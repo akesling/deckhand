@@ -204,6 +204,9 @@ pub enum TermState {
     /// This context can't run terminals but is showing a capture baked
     /// in by `deckhand compile --snapshots`.
     Snapshot,
+    /// The block hasn't been approved to run yet: its command is shown
+    /// and the presenter confirms with `t`, then `y`.
+    Disabled,
     /// This context can't run terminals (e.g. the browser).
     Unavailable,
 }
@@ -234,6 +237,12 @@ pub trait TerminalProvider {
     /// The deck was replaced and its terminal blocks changed: drop all
     /// live terminal state so blocks start cleanly. Default: no-op.
     fn reset(&mut self) {}
+    /// The presenter confirmed running this [`TermState::Disabled`]
+    /// block (the in-deck `y` confirmation). Default: no-op.
+    fn enable(&mut self, _id: usize) {}
+    /// Stop this terminal and withdraw its approval — it returns to
+    /// [`TermState::Disabled`] (the `s` key). Default: no-op.
+    fn stop(&mut self, _id: usize) {}
     /// Whether terminals can be focused and typed into in this context.
     fn interactive(&self) -> bool {
         true
@@ -302,6 +311,8 @@ pub struct Presenter<P: TerminalProvider> {
     overview_rects: Vec<((usize, usize), Rect)>,
     status: Option<String>,
     jump_input: String,
+    /// A disabled terminal awaiting the presenter's `y` to run.
+    pending_enable: Option<usize>,
     /// Extra line shown at the bottom of the help overlay (the native
     /// front end uses it for the notes-socket hint).
     pub help_footer: Option<String>,
@@ -331,6 +342,7 @@ impl<P: TerminalProvider> Presenter<P> {
             overview_rects: Vec::new(),
             status: None,
             jump_input: String::new(),
+            pending_enable: None,
             help_footer: None,
             quit: false,
         })
@@ -396,6 +408,7 @@ impl<P: TerminalProvider> Presenter<P> {
             self.mode = Mode::Overview { sel: (c, r) };
         }
         self.jump_input.clear();
+        self.pending_enable = None;
         Ok(())
     }
 
@@ -421,6 +434,7 @@ impl<P: TerminalProvider> Presenter<P> {
             self.row = row;
             self.depth_memory[col] = row;
             self.focus = None;
+            self.pending_enable = None;
         }
     }
 
@@ -447,6 +461,17 @@ impl<P: TerminalProvider> Presenter<P> {
     /// (while a terminal is focused) input forwarded to the provider.
     pub fn on_key(&mut self, key: KeyPress) {
         self.status = None;
+
+        // A disabled terminal is awaiting confirmation: `y` runs it,
+        // anything else cancels (take() clears the pending state) and
+        // is then handled normally.
+        if let Some(id) = self.pending_enable.take()
+            && matches!(key.key, Key::Char('y') | Key::Char('Y'))
+        {
+            self.provider.enable(id);
+            self.focus = Some(id);
+            return;
+        }
 
         if let Some(id) = self.focus {
             if key.key == Key::Char('q') && key.ctrl {
@@ -528,7 +553,8 @@ impl<P: TerminalProvider> Presenter<P> {
             Key::Char('?') => self.mode = Mode::Help,
             Key::Enter | Key::Char('t') => self.focus_terminal(),
             Key::Char(c @ '1'..='9') => self.select_terminal(c as usize - '0' as usize),
-            Key::Char('R') => self.restart_terminals(),
+            Key::Char('s') => self.stop_terminal(),
+            Key::Char('R') => self.restart_terminal(),
             _ => {}
         }
     }
@@ -572,16 +598,56 @@ impl<P: TerminalProvider> Presenter<P> {
             return;
         };
         self.selected.insert((self.col, self.row), id);
+        // Unapproved blocks ask before running anything.
+        if self.provider.state(&self.block_by_id(id)) == TermState::Disabled {
+            let command = self.block_label(id);
+            self.pending_enable = Some(id);
+            self.status = Some(format!(
+                "run `{command}`? y confirms · any other key cancels"
+            ));
+            return;
+        }
         self.focus = Some(id);
     }
 
-    fn restart_terminals(&mut self) {
-        let ids = self.current_ids();
-        if ids.is_empty() || !self.provider.interactive() {
+    fn block_label(&self, id: usize) -> String {
+        let block = self.block_by_id(id);
+        block
+            .command
+            .as_deref()
+            .and_then(|c| c.lines().next())
+            .unwrap_or("shell")
+            .to_string()
+    }
+
+    fn stop_terminal(&mut self) {
+        let Some(id) = self.selected_terminal() else {
             return;
+        };
+        match self.provider.state(&self.block_by_id(id)) {
+            TermState::Running { .. } | TermState::Exited | TermState::Failed(_) => {
+                self.provider.stop(id);
+                self.focus = None;
+                self.status = Some(format!("stopped `{}`", self.block_label(id)));
+            }
+            _ => {}
         }
-        self.provider.restart(&ids);
-        self.status = Some("terminals restarted".to_string());
+    }
+
+    fn restart_terminal(&mut self) {
+        let Some(id) = self.selected_terminal() else {
+            return;
+        };
+        match self.provider.state(&self.block_by_id(id)) {
+            TermState::Running { .. } | TermState::Exited | TermState::Failed(_) => {
+                self.provider.restart(&[id]);
+                self.status = Some(format!("restarted `{}`", self.block_label(id)));
+            }
+            TermState::Disabled => {
+                self.status = Some("not running — t runs it".to_string());
+            }
+            _ => {}
+        }
     }
 
     fn overview_codes(&self) -> Vec<((usize, usize), String)> {
@@ -671,10 +737,19 @@ impl<P: TerminalProvider> Presenter<P> {
                     if !self.provider.interactive() {
                         return;
                     }
+                    self.pending_enable = None;
                     match term_at(&self.term_rects) {
                         Some(id) => {
                             self.selected.insert((self.col, self.row), id);
-                            self.focus = Some(id);
+                            if self.provider.state(&self.block_by_id(id)) == TermState::Disabled {
+                                let command = self.block_label(id);
+                                self.pending_enable = Some(id);
+                                self.status = Some(format!(
+                                    "run `{command}`? y confirms · any other key cancels"
+                                ));
+                            } else {
+                                self.focus = Some(id);
+                            }
                         }
                         None => self.focus = None,
                     }
@@ -832,6 +907,10 @@ impl<P: TerminalProvider> Presenter<P> {
             TermState::Failed(_) => "spawn failed".to_string(),
             TermState::Exited => "exited · R restarts".to_string(),
             TermState::Snapshot => "snapshot · runs live in the real TUI".to_string(),
+            TermState::Disabled if self.pending_enable == Some(block.id) => {
+                "run? y confirms · any other key cancels".to_string()
+            }
+            TermState::Disabled => "t to run".to_string(),
             TermState::Unavailable => "runs live in the real TUI".to_string(),
             TermState::Running { scroll_offset, .. } if *scroll_offset > 0 => {
                 format!("history -{scroll_offset} · shift-pgdn returns")
@@ -839,7 +918,7 @@ impl<P: TerminalProvider> Presenter<P> {
             TermState::Running { .. } if focused => {
                 "Ctrl-q releases · shift-pgup history".to_string()
             }
-            TermState::Running { .. } if is_next => "t interacts".to_string(),
+            TermState::Running { .. } if is_next => "t interacts · s stops".to_string(),
             TermState::Running { .. } => format!("{} selects", idx + 1),
         };
 
@@ -1039,11 +1118,11 @@ impl<P: TerminalProvider> Presenter<P> {
             lines.extend([
                 Line::from(Span::styled(" terminals", dim)),
                 row("1-9", "select terminal pane"),
-                row("t, enter", "focus selected terminal"),
-                row("click", "select + focus terminal"),
+                row("t, enter", "run (after y) / focus the selected terminal"),
+                row("click", "same as t, on the clicked terminal"),
                 row("ctrl-q", "release terminal focus (or click outside)"),
                 row("shift-pgup/dn", "scroll terminal history (or wheel)"),
-                row("R", "restart terminals on this slide"),
+                row("s / R", "stop / restart the selected terminal"),
                 Line::default(),
             ]);
         }
@@ -1216,6 +1295,88 @@ mod tests {
         let smaller = crate::deck::parse("# only\n", "t").unwrap();
         p.replace_deck(smaller, vec![]).unwrap();
         assert_eq!(p.position(), (0, 0));
+    }
+
+    /// A provider with per-block consent, like the native PtyProvider.
+    #[derive(Default)]
+    struct GatedTerms {
+        approved: std::collections::HashSet<usize>,
+        stopped: Vec<usize>,
+    }
+    impl TerminalProvider for GatedTerms {
+        fn prepare(&mut self, _: &TermBlock, _: u16, _: u16) {}
+        fn state(&self, block: &TermBlock) -> TermState {
+            if self.approved.contains(&block.id) {
+                TermState::Running {
+                    scroll_offset: 0,
+                    scroll_total: 0,
+                }
+            } else {
+                TermState::Disabled
+            }
+        }
+        fn draw(&mut self, _: &TermBlock, _: Rect, _: &mut Buffer) {}
+        fn input(&mut self, _: usize, _: &[u8]) {}
+        fn scroll(&mut self, _: usize, _: isize) {}
+        fn restart(&mut self, _: &[usize]) {}
+        fn enable(&mut self, id: usize) {
+            self.approved.insert(id);
+        }
+        fn stop(&mut self, id: usize) {
+            self.approved.remove(&id);
+            self.stopped.push(id);
+        }
+    }
+
+    #[test]
+    fn disabled_terminals_need_in_deck_confirmation() {
+        let deck = crate::deck::parse("```terminal\nhtop\n```\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], GatedTerms::default()).unwrap();
+
+        // t arms the confirmation but runs nothing.
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        assert_eq!(p.focus, None);
+        assert!(p.provider.approved.is_empty());
+
+        // y approves and focuses.
+        p.on_key(KeyPress::plain(Key::Char('y')));
+        assert!(p.provider.approved.contains(&0));
+        assert_eq!(p.focus, Some(0));
+    }
+
+    #[test]
+    fn any_other_key_cancels_the_confirmation() {
+        let deck = crate::deck::parse("```terminal\nhtop\n```\n---\n# b\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], GatedTerms::default()).unwrap();
+
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        // Space cancels — and still navigates.
+        p.on_key(KeyPress::plain(Key::Char(' ')));
+        assert!(p.provider.approved.is_empty());
+        assert_eq!(p.position(), (1, 0));
+        // A later y is just an inert key, not an approval.
+        p.on_key(KeyPress::plain(Key::Char('y')));
+        assert!(p.provider.approved.is_empty());
+    }
+
+    #[test]
+    fn stop_withdraws_approval() {
+        let deck = crate::deck::parse("```terminal\nhtop\n```\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], GatedTerms::default()).unwrap();
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        p.on_key(KeyPress::plain(Key::Char('y')));
+        assert_eq!(p.focus, Some(0));
+
+        p.on_key(KeyPress {
+            ctrl: true,
+            ..KeyPress::plain(Key::Char('q'))
+        });
+        p.on_key(KeyPress::plain(Key::Char('s')));
+        assert_eq!(p.provider.stopped, vec![0]);
+        assert_eq!(p.focus, None);
+        // Back to Disabled: running again requires re-confirmation.
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        assert_eq!(p.focus, None);
     }
 
     #[test]

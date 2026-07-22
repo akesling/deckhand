@@ -24,6 +24,10 @@ struct Cli {
     /// Don't live-reload when the deck's files change on disk
     #[arg(long)]
     no_watch: bool,
+    /// Start terminal commands as soon as their slide appears (default:
+    /// each terminal shows its command until run with t, then y)
+    #[arg(long)]
+    eager: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
 }
@@ -40,6 +44,10 @@ enum Cmd {
         /// Don't live-reload when the deck's files change on disk
         #[arg(long)]
         no_watch: bool,
+        /// Start terminal commands as soon as their slide appears
+        /// (default: each shows its command until run with t, then y)
+        #[arg(long)]
+        eager: bool,
     },
     /// Follow presenter notes from a separate terminal
     Notes {
@@ -87,7 +95,13 @@ pub fn main() -> Result<()> {
             deck,
             socket,
             no_watch,
-        }) => present::run(&deck, socket.unwrap_or_else(default_socket), !no_watch),
+            eager,
+        }) => present::run(
+            &deck,
+            socket.unwrap_or_else(default_socket),
+            !no_watch,
+            eager,
+        ),
         Some(Cmd::Notes { socket }) => notes::run(socket.unwrap_or_else(default_socket)),
         Some(Cmd::Compile {
             deck,
@@ -115,6 +129,7 @@ pub fn main() -> Result<()> {
                 &deck,
                 cli.socket.unwrap_or_else(default_socket),
                 !cli.no_watch,
+                cli.eager,
             ),
             None => {
                 eprintln!("usage: deckhand <deck.md|deck.json|url> | deckhand notes");
