@@ -1,28 +1,81 @@
+/* deckhand.site — styled after deckhand's own ratatui defaults:
+   cyan accent, light-blue h2, yellow inline code, green quotes,
+   gray-236 status bar, gray-244 block borders. Everything monospace,
+   everything square.
+
+   Theming: rules below use ONLY the semantic tokens. To add a theme,
+   override the semantic block — e.g.
+
+     :root[data-theme="light"] { --bg: #fdf6e3; --fg: #073642; … }
+
+   The terminals pick their colors up from the same tokens at mount
+   time (see ts/mount.ts), so a theme switch covers them too. */
+
 :root {
-  --bg: #0d0d11;
-  --bg-raised: #16161c;
-  --fg: #d8d8d8;
-  --fg-muted: #8a8a93;
-  --accent: #c678dd;
-  --accent-2: #56b6c2;
-  --border: #2a2a33;
-  --code-bg: #1c1c24;
+  /* ------------------------------------------------ raw palette (dark) */
+  --gray-950: #0c0c0e;  /* page */
+  --gray-925: #101014;  /* terminal screen */
+  --gray-900: #1a1a20;  /* ~xterm 235 — code, inputs */
+  --gray-800: #2e2e34;  /* hairlines */
+  --gray-750: #303030;  /* xterm 236 — the app's status bar */
+  --gray-500: #808080;  /* xterm 244 — the app's block borders */
+  --gray-450: #8a8a8a;  /* ~xterm 245 */
+  --gray-300: #bcbcbc;  /* xterm 250 */
+  --gray-200: #d0d0d0;  /* xterm 252 */
+  --gray-100: #eaeaea;
+
+  --ansi-cyan: #5fd7d7;
+  --ansi-blue-bright: #87c7ff;
+  --ansi-blue: #6ea6ff;
+  --ansi-yellow: #e5c07b;
+  --ansi-green: #98c379;
+  --ansi-red: #e06c75;
+
+  /* -------------------------------------------------- semantic tokens */
+  --bg: var(--gray-950);
+  --surface: var(--gray-900);          /* code blocks, inputs, editor */
+  --surface-terminal: var(--gray-925); /* xterm screens */
+
+  --fg: var(--gray-200);
+  --fg-strong: var(--gray-100);
+  --fg-muted: var(--gray-450);
+  --fg-on-fill: var(--gray-950);       /* text on accent/fg-filled bits */
+
+  --border: var(--gray-800);           /* hairlines: rules, table lines */
+  --border-strong: var(--gray-500);    /* TUI block borders */
+
+  --accent: var(--ansi-cyan);          /* h1, bullets, brand, buttons */
+  --subheading: var(--ansi-blue-bright);
+  --link: var(--ansi-blue);
+  --code: var(--ansi-yellow);
+  --quote: var(--ansi-green);
+  --error: var(--ansi-red);
+
+  --status-bg: var(--gray-750);        /* footer status bar, kbd, th */
+  --status-fg: var(--gray-300);
+
   --max: 52rem;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.6;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height: 1.65;
 }
 
-code, pre, kbd, .terminal-frame {
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+::selection { background: var(--accent); color: var(--fg-on-fill); }
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ------------------------------------------------------------------ nav */
@@ -31,7 +84,9 @@ code, pre, kbd, .terminal-frame {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 1rem 1.5rem;
+  flex-wrap: wrap;
+  gap: .25rem 1rem;
+  padding: .7rem 1.25rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -39,123 +94,224 @@ code, pre, kbd, .terminal-frame {
   color: var(--fg);
   text-decoration: none;
   font-weight: 700;
-  font-size: 1.1rem;
 }
 .brand .anchor { color: var(--accent); }
 
+.nav nav { display: flex; flex-wrap: wrap; gap: .1rem .35rem; }
 .nav nav a {
   color: var(--fg-muted);
   text-decoration: none;
-  margin-left: 1.25rem;
+  padding: 0 .45em;
 }
-.nav nav a:hover { color: var(--fg); }
+.nav nav a .n { color: var(--border-strong); }
+.nav nav a:hover { color: var(--fg); background: none; }
+.nav nav a[aria-current="page"] {
+  background: var(--accent);
+  color: var(--fg-on-fill);
+}
+.nav nav a[aria-current="page"] .n { color: var(--fg-on-fill); }
 
 /* ----------------------------------------------------------------- main */
 
 main {
+  width: 100%;
   max-width: var(--max);
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem;
+  flex: 1;
 }
 main.wide { max-width: 72rem; }
 
-h1, h2, h3 { line-height: 1.25; }
-h1 { font-size: 2rem; }
-h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
-a { color: var(--accent-2); }
-h1 a, h2 a, h3 a { color: inherit; text-decoration: none; }
+h1, h2, h3 { line-height: 1.3; font-weight: 700; }
+h1 { font-size: 1.7rem; color: var(--accent); }
+h1::before { content: "# "; color: var(--border-strong); }
 
-hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+h2 {
+  margin-top: 2.75rem;
+  font-size: 1.15rem;
+  color: var(--subheading);
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+h2::before { content: "──"; color: var(--border-strong); flex: none; }
+h2::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+
+h3 { font-size: 1rem; color: var(--fg-strong); }
+
+a { color: var(--link); text-decoration: underline; text-underline-offset: .2em; }
+a:hover { background: var(--link); color: var(--fg-on-fill); text-decoration: none; }
+h1 a, h2 a, h3 a { color: inherit; text-decoration: none; }
+h1 a:hover, h2 a:hover, h3 a:hover { background: none; color: inherit; }
+
+strong { color: var(--fg-strong); }
+
+ul { padding-left: 1.4rem; }
+li::marker { color: var(--accent); }
+
+hr {
+  border: none;
+  margin: 2.25rem 0;
+  text-align: center;
+  color: var(--border-strong);
+}
+hr::after { content: "· · ─────── ⚓ ─────── · ·"; letter-spacing: .1em; }
 
 pre {
-  background: var(--code-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: .9rem 1.1rem;
+  padding: .8rem 1rem;
   overflow-x: auto;
   font-size: .88rem;
   line-height: 1.5;
 }
 
 code {
-  background: var(--code-bg);
-  padding: .1em .35em;
-  border-radius: 4px;
-  font-size: .88em;
+  color: var(--code);
+  background: var(--surface);
+  padding: .05em .3em;
+  font-size: .9em;
+  overflow-wrap: anywhere;
 }
-pre code { background: none; padding: 0; }
+pre code { background: none; color: var(--fg); padding: 0; }
 
 kbd {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 .35em;
+  font-family: inherit;
+  background: var(--status-bg);
+  color: var(--status-fg);
+  border: 1px solid var(--border-strong);
+  padding: 0 .4em;
   font-size: .85em;
 }
 
 table {
   border-collapse: collapse;
   width: 100%;
-  font-size: .92rem;
+  font-size: .9rem;
 }
 th, td {
   text-align: left;
-  padding: .4rem .7rem;
+  padding: .35rem .7rem;
   border-bottom: 1px solid var(--border);
 }
-th { color: var(--fg-muted); font-weight: 600; }
+th {
+  background: var(--status-bg);
+  color: var(--status-fg);
+  font-weight: 600;
+}
 
 blockquote {
   margin: 1rem 0;
   padding: .1rem 1rem;
-  border-left: 3px solid var(--accent);
-  color: var(--fg-muted);
+  border-left: 2px solid var(--quote);
+  color: var(--quote);
 }
 
-footer {
-  border-top: 1px solid var(--border);
-  color: var(--fg-muted);
-  text-align: center;
-  padding: 1.5rem;
-  font-size: .85rem;
+/* ----------------------------------------------------- ratatui blocks */
+
+/* A bordered block with its title sitting on the border, the way
+   ratatui draws `Block::title()`. Give the element data-title. The
+   padding keeps the interior (e.g. a darker terminal screen) clear of
+   the border and title. */
+.tui-block {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  padding: .6rem;
+  margin: 1.5rem 0 .25rem;
 }
+.tui-block::before {
+  content: "┤ " attr(data-title) " ├";
+  position: absolute;
+  top: -.72em;
+  left: .9rem;
+  background: var(--bg);
+  padding: 0 .35ch;
+  color: var(--border-strong);
+  font-size: .85rem;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------- footer */
+
+footer {
+  background: var(--status-bg);
+  color: var(--status-fg);
+  font-size: .85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  padding: .3rem 0;
+}
+footer p { margin: 0; padding: 0 1rem; }
+footer .seg {
+  background: var(--accent);
+  color: var(--fg-on-fill);
+  font-weight: 700;
+  padding: .3rem .8rem;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+footer a { color: var(--status-fg); }
+footer a:hover { background: var(--status-fg); color: var(--status-bg); }
 
 /* ----------------------------------------------------------------- hero */
 
 .hero { text-align: center; padding: 2.5rem 0 1rem; }
-.hero h1 { font-size: 2.6rem; margin-bottom: .4rem; }
-.hero .tagline { color: var(--fg-muted); font-size: 1.2rem; margin-top: 0; }
-.hero .actions { margin-top: 1.4rem; }
+.hero h1 { font-size: 2.1rem; margin-bottom: .4rem; }
+.hero h1::before { content: none; }
+.hero .tagline {
+  color: var(--fg-muted);
+  font-size: 1.02rem;
+  margin: 0 auto;
+  max-width: 38rem;
+}
+.hero .actions { margin-top: 1.5rem; }
 .hero .actions a {
   display: inline-block;
-  margin: 0 .4rem;
-  padding: .55rem 1.2rem;
-  border-radius: 8px;
+  margin: .2rem .4rem;
+  padding: .5rem 1.2rem;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
 }
-.hero .actions .primary { background: var(--accent); color: #101014; }
-.hero .actions .secondary { border: 1px solid var(--border); color: var(--fg); }
+.hero .actions .primary { background: var(--accent); color: var(--fg-on-fill); }
+.hero .actions .primary:hover { background: var(--fg); }
+.hero .actions .secondary {
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
+}
+.hero .actions .secondary:hover { background: var(--fg); color: var(--fg-on-fill); }
 
 .install-line {
   display: inline-block;
-  background: var(--code-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: .5rem 1rem;
-  margin-top: 1.2rem;
-  color: var(--accent-2);
+  padding: .45rem 1rem;
+  margin-top: 1.4rem;
+  color: var(--fg);
+}
+.install-line::before { content: "$ "; color: var(--quote); }
+.install-line::after {
+  content: "▋";
+  color: var(--accent);
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .install-line::after { animation: none; }
 }
 
 /* ------------------------------------------------------------- terminal */
 
+code, pre, kbd, .terminal-frame { font-family: inherit; }
+
 .terminal-frame {
-  background: #101014;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: var(--surface-terminal);
   padding: .75rem;
-  margin: 1.5rem 0 .25rem;
   /* Fixed height: the fit addon derives rows from this, so it must not
      depend on the terminal's own content or fitting loops forever. */
   height: 26rem;
@@ -169,7 +325,7 @@ footer {
   min-height: 1.4rem;
   margin-bottom: 1.5rem;
 }
-.terminal-caption .caption-meta { color: var(--accent-2); }
+.terminal-caption .caption-meta { color: var(--accent); }
 
 .hint-bar {
   color: var(--fg-muted);
@@ -182,18 +338,28 @@ footer {
 
 .features {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 1rem;
-  margin: 2.5rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.4rem 1rem;
+  margin: 3rem 0 2.5rem;
 }
 .feature {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.2rem;
+  position: relative;
+  border: 1px solid var(--border-strong);
+  padding: 1.1rem 1.1rem .9rem;
 }
-.feature h3 { margin: .2rem 0 .5rem; font-size: 1rem; }
-.feature p { margin: 0; color: var(--fg-muted); font-size: .92rem; }
+.feature h3 {
+  position: absolute;
+  top: -.78em;
+  left: .7rem;
+  margin: 0;
+  background: var(--bg);
+  padding: 0 .5ch;
+  font-size: .9rem;
+  color: var(--accent);
+  line-height: 1.2;
+}
+.feature p { margin: 0; color: var(--fg-muted); font-size: .88rem; }
+.feature p code { font-size: .95em; }
 
 /* ----------------------------------------------------------------- play */
 
@@ -202,26 +368,33 @@ footer {
   gap: .6rem;
   margin: 1.5rem 0 .5rem;
 }
-.play-form input[type="url"] {
+.play-form input[type="url"],
+.play-form input[type="password"] {
   flex: 1;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   color: var(--fg);
-  padding: .55rem .8rem;
-  font-size: .95rem;
+  padding: .5rem .8rem;
+  font-family: inherit;
+  font-size: .9rem;
 }
+.play-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.play-form input::placeholder { color: var(--fg-muted); }
 .play-form button {
   background: var(--accent);
-  color: #101014;
+  color: var(--fg-on-fill);
   border: none;
-  border-radius: 8px;
-  padding: .55rem 1.2rem;
-  font-weight: 600;
+  padding: .5rem 1.2rem;
+  font-family: inherit;
+  font-weight: 700;
   cursor: pointer;
 }
+.play-form button:hover { background: var(--fg); }
 #play-status { color: var(--fg-muted); font-size: .9rem; min-height: 1.3rem; }
-#play-status.error { color: #e06c75; }
+#play-status.error { color: var(--error); }
 
 /* ----------------------------------------------------------- playground */
 
@@ -232,7 +405,7 @@ footer {
      content-derived minimums feed the fit-addon resize loop. */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  gap: 1.4rem;
   margin: 1.5rem 0 .5rem;
 }
 .playground > * { min-width: 0; }
@@ -240,12 +413,11 @@ footer {
   width: 100%;
   height: 16rem;
   resize: vertical;
-  background: var(--code-bg);
+  background: var(--surface);
   color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid var(--border-strong);
   padding: .75rem .9rem;
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: inherit;
   font-size: .85rem;
   line-height: 1.5;
   tab-size: 2;
@@ -254,20 +426,27 @@ footer {
   outline: none;
   border-color: var(--accent);
 }
-.playground .terminal-frame { margin: 0; height: 26rem; }
+.playground .terminal-frame { height: 26rem; }
+.playground .tui-block { margin: .75rem 0 0; }
 .playground .terminal-caption { margin-bottom: 0; margin-top: .4rem; }
 
 .pg-status { color: var(--fg-muted); font-size: .9rem; min-height: 1.3rem; }
-.pg-status.error { color: #e06c75; }
+.pg-status.error { color: var(--error); }
 
 .gist-tools {
-  background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
   padding: .6rem 1rem;
-  margin: 1rem 0;
+  margin: 1.5rem 0;
 }
-.gist-tools summary { cursor: pointer; color: var(--fg-muted); }
+.gist-tools summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  list-style: none;
+}
+.gist-tools summary::before { content: "▸ "; color: var(--border-strong); }
+.gist-tools[open] summary::before { content: "▾ "; }
+.gist-tools summary::-webkit-details-marker { display: none; }
+.gist-tools summary:hover { color: var(--fg); }
 .gist-tools .play-form { margin: .8rem 0 .3rem; flex-wrap: wrap; }
 .gist-tools label.remember {
   display: flex;
@@ -276,14 +455,16 @@ footer {
   color: var(--fg-muted);
   font-size: .9rem;
 }
+.gist-tools input[type="checkbox"] { accent-color: var(--accent); }
 .gist-tools .secondary-btn {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--fg);
-  border-radius: 8px;
-  padding: .55rem 1rem;
+  padding: .5rem 1rem;
+  font-family: inherit;
   cursor: pointer;
 }
+.gist-tools .secondary-btn:hover { background: var(--fg); color: var(--fg-on-fill); }
 .gist-tools .fineprint {
   color: var(--fg-muted);
   font-size: .82rem;
@@ -293,9 +474,11 @@ footer {
 button.linklike {
   background: none;
   border: none;
-  color: var(--accent-2);
+  color: var(--link);
   text-decoration: underline;
+  text-underline-offset: .2em;
   cursor: pointer;
   font: inherit;
   padding: 0;
 }
+button.linklike:hover { background: var(--link); color: var(--fg-on-fill); text-decoration: none; }

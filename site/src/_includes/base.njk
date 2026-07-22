@@ -13,19 +13,25 @@
   <header class="nav">
     <a class="brand" href="/">deckhand <span class="anchor">⚓</span></a>
     <nav>
-      <a href="/why/">why</a>
-      <a href="/getting-started/">getting started</a>
-      <a href="/docs/">docs</a>
-      <a href="/playground/">playground</a>
-      <a href="/play/">play</a>
-      <a href="https://github.com/akesling/deckhand">source</a>
+      {%- set navItems = [
+        ["/why/", "why"],
+        ["/getting-started/", "getting started"],
+        ["/docs/", "docs"],
+        ["/playground/", "playground"],
+        ["/play/", "play"]
+      ] -%}
+      {%- for item in navItems %}
+      <a href="{{ item[0] }}"{% if page.url == item[0] %} aria-current="page"{% endif %}><span class="n">{{ loop.index }}:</span>{{ item[1] }}</a>
+      {%- endfor %}
+      <a href="https://github.com/akesling/deckhand"><span class="n">6:</span>source</a>
     </nav>
   </header>
   <main{% if wide %} class="wide"{% endif %}>
     {{ content | safe }}
   </main>
   <footer>
-    <p>deckhand — a slide deck, in your terminal. MIT licensed.</p>
+    <span class="seg">⚓ deckhand</span>
+    <p>a slide deck, in your terminal · MIT licensed</p>
   </footer>
   {% if script %}<script type="module" src="/js/{{ script }}.js"></script>{% endif %}
 </body>

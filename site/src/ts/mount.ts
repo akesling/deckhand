@@ -28,6 +28,13 @@ export interface Mounted {
   setDeck(next: WebDeck): void;
 }
 
+/** Resolve a semantic color token from site.css, so the terminals
+    follow the page theme instead of hardcoding a palette. */
+function cssColor(name: string, fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 /** Attach a loaded WebDeck to an element and wire keys/resize. */
 export function mountDeck(
   el: HTMLElement,
@@ -41,8 +48,10 @@ export function mountDeck(
     fontFamily: "'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
     fontSize: 14,
     theme: {
-      background: "#101014",
-      foreground: "#d8d8d8",
+      background: cssColor("--surface-terminal", "#101014"),
+      foreground: cssColor("--fg", "#d0d0d0"),
+      selectionBackground: cssColor("--accent", "#5fd7d7"),
+      selectionForeground: cssColor("--fg-on-fill", "#0c0c0e"),
     },
   });
   const fit = new FitAddon();
