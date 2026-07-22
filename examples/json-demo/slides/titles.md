@@ -1,10 +1,11 @@
 # themes & layout
 
-this title is nailed to the top row while the body floats,
-**vertically centered** below it — and in a manifest deck, the theme
-lives on the slide's entry in `deck.json`, no fence needed:
+every title in this deck sits on the same row — set once, deck-wide,
+in the manifest's `theme`:
 
 ```json
-{ "file": "slides/titles.md",
-  "theme": { "pin_title": true, "h1": "magenta" } }
+"theme": { "pin_title": true, "title_gap": 2,
+           "margin_x": 3, "margin_y": 1 }
 ```
+
+the body floats, **vertically centered**, in the space that's left ↓

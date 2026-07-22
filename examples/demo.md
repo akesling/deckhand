@@ -2,7 +2,15 @@
 title: deckhand demo
 theme:
   border_type: rounded
+  pin_title: true
+  title_gap: 2
+  margin_x: 3
+  margin_y: 1
 ---
+
+```theme
+pin_title: false
+```
 
 # deckhand
 
@@ -74,45 +82,43 @@ fn main() {
 
 # themes & layout
 
-```theme
-pin_title: true
-h1: magenta
-h2: light-magenta
+every title in this deck sits on the same row — set once, deck-wide,
+in the frontmatter:
+
+```yaml
+theme:
+  pin_title: true    # nail the heading to the top…
+  title_gap: 2       # …with this much air under it
+  margin_x: 3        # minimum air, left and right
+  margin_y: 1        # and above / below
 ```
 
-a ```` ```theme ```` fence restyles **just this slide** — this one
-recolors its headings and sets `pin_title: true`:
-
-the title above is nailed to the top row, while this body floats,
-**vertically centered** in the space below it ↓
+the body floats, **vertically centered**, in the space that's left ↓
 
 --
 
 ## the title stays put
 
-```theme
-pin_title: true
-h1: magenta
-h2: light-magenta
-```
+more content this time — the heading didn't move, the body just
+grew around its own center
 
-same fence, much more content — the heading didn't move, the body
-just grew around its own center
-
+- layout is one box, two axes, three questions: air (`margin_x` /
+  `margin_y`), cap (`max_width` / `max_height`), and where leftover
+  space goes (`align_x` / `align_y`)
 - headings are always bold; `h1` / `h2` set their colors
-- `pin_title` anchors the heading only; `align_y: top` pins
-  *everything* instead
-- set either deck-wide in frontmatter, per-user in
-  `~/.config/deckhand/theme.json`, or per-slide like here
-- also themeable: `accent`, borders, margins, code colors,
-  `qr_dark` / `qr_light`
+- override anything per-slide with a ```` ```theme ```` fence —
+  the title slide of this deck opts out with `pin_title: false`
 
 --
 
-## …and floats without it
+```theme
+pin_title: false
+```
 
-no fence on this slide, so it's back on the deck default:
-title and body centered together
+## …and floats when you opt out
+
+this slide's fence sets `pin_title: false`, so title and body
+center together as one block
 
 ???
 
@@ -190,6 +196,10 @@ cells split by `||`. (`![alt](image.png)` on its own line renders as
 ASCII art, too)
 
 ---
+
+```theme
+pin_title: false
+```
 
 # fin
 

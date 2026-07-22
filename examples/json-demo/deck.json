@@ -5,21 +5,23 @@
     "accent": "magenta",
     "h1": "magenta",
     "bullet": "magenta",
-    "max_width": 84
+    "max_width": 84,
+    "pin_title": true,
+    "title_gap": 2,
+    "margin_x": 3,
+    "margin_y": 1
   },
   "columns": [
-    "slides/intro.md",
+    { "file": "slides/intro.md", "theme": { "pin_title": false } },
     [
       "slides/layout.md",
       { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }
     ],
     [
-      { "file": "slides/titles.md",
-        "theme": { "pin_title": true, "h1": "magenta", "h2": "light-magenta" },
-        "notes": "The pin comes from this entry's theme, not the file." },
-      { "file": "slides/titles-deep.md",
-        "theme": { "pin_title": true, "h1": "magenta", "h2": "light-magenta" } },
+      "slides/titles.md",
+      "slides/titles-deep.md",
       { "file": "slides/titles-float.md",
+        "theme": { "pin_title": false },
         "notes": "Flip up and down here to watch the heading jump — that's pin_title." }
     ],
     [
@@ -44,6 +46,8 @@
       }
     ],
     { "file": "slides/qr.md", "notes": "Scannable straight off the screen — drawn black-on-white whatever the theme says." },
-    { "file": "slides/fin.md", "notes_file": "slides/fin-notes.md" }
+    { "file": "slides/fin.md",
+      "theme": { "pin_title": false },
+      "notes_file": "slides/fin-notes.md" }
   ]
 }
