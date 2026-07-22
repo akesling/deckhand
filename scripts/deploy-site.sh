@@ -4,8 +4,10 @@
 # URLs versions.json points old releases at) and then to production.
 # Build first with scripts/build-site.sh; this script only deploys.
 #
-# Auth: CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (repo secrets in
-# CI), or an interactive `wrangler login` locally. One-time setup:
+# Auth: CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID, in CI (repo
+# secrets) and locally alike. Use a custom API token scoped to
+# Account → Cloudflare Pages → Edit — avoid `wrangler login`, whose
+# OAuth grant is account-wide and not narrowable. One-time setup:
 #   bunx wrangler pages project create <project> --production-branch main
 set -euo pipefail
 # Tool homes for minimal shells (CI, cron, editors).

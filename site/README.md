@@ -92,9 +92,12 @@ fetches the production copy of that manifest — CORS-opened via
 `src/_headers` so old branch-alias deployments can read it too — and
 jumps to the same path on whichever release you pick.
 
-One-time Cloudflare setup: create the project with
+One-time Cloudflare setup: create a custom API token scoped to
+**Account → Cloudflare Pages → Edit** only (don't use `wrangler login`
+— its OAuth grant is account-wide and not narrowable), create the
+project with
 `bunx wrangler pages project create deckhand --production-branch main`,
-then give the GitHub repo `CLOUDFLARE_API_TOKEN` (Pages:Edit) and
-`CLOUDFLARE_ACCOUNT_ID` secrets. `CLOUDFLARE_PAGES_PROJECT` and
-`DECKHAND_SITE_URL` env vars override the project name and production
-URL if they ever change.
+then give the GitHub repo `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` secrets. The same two env vars drive local
+deploys. `CLOUDFLARE_PAGES_PROJECT` and `DECKHAND_SITE_URL` override
+the project name and production URL if they ever change.
