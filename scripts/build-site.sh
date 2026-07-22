@@ -15,6 +15,10 @@ command -v bun >/dev/null || {
 
 cd "${_site}" || exit 1
 [ -d node_modules ] || bun install
+# Type-check against the freshly generated wasm bindings — this is the
+# one place the real deckhand.d.ts is guaranteed to exist (check.sh
+# skips the TS check when it doesn't).
+bun run check
 mkdir -p dist/js
 bun run build:ts
 bun run build:site

@@ -16,11 +16,17 @@ RUSTFLAGS="-D warnings" RUSTDOCFLAGS="-D warnings" cargo test --locked
 echo "== cargo doc"
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --document-private-items --quiet
 
-if command -v bun >/dev/null && [ -d "${_root}/site/node_modules" ]; then
+# The TS sources import the generated wasm bindings, so the check only
+# means something once those exist. CI runs it in the site job (via
+# build-site.sh), which builds the wasm first.
+if command -v bun >/dev/null \
+  && [ -d "${_root}/site/node_modules" ] \
+  && [ -f "${_root}/site/wasm/deckhand.d.ts" ]; then
   echo "== typescript check"
   (cd "${_root}/site" && bunx tsc --noEmit)
 else
-  echo "== typescript check skipped (bun or site/node_modules missing)"
+  echo "== typescript check skipped (needs bun, site/node_modules, and" \
+    "site/wasm bindings — build with scripts/build-wasm.sh)"
 fi
 
 echo "all checks passed"
