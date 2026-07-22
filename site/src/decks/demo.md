@@ -72,6 +72,48 @@ fn main() {
 
 ---
 
+# themes & layout
+
+```theme
+vertical_align: top
+h1: magenta
+h2: light-magenta
+```
+
+a ```` ```theme ```` fence restyles **just this slide** — this one
+pins content to the top and recolors its headings
+
+with `vertical_align: top`, the title starts on the same row on
+every slide, no matter how much follows it ↓
+
+--
+
+## the title stays put
+
+```theme
+vertical_align: top
+h1: magenta
+h2: light-magenta
+```
+
+same fence, much more content — but the heading didn't move
+
+- headings are always bold; `h1` / `h2` set their colors
+- set `vertical_align` deck-wide in frontmatter, per-user in
+  `~/.config/deckhand/theme.json`, or per-slide like here
+- also themeable: `accent`, borders, margins, code colors,
+  `qr_dark` / `qr_light`
+
+--
+
+## …and floats without it
+
+no fence on this slide, so it's back on the deck default:
+content vertically centered — flip `↑` / `↓` to watch the
+heading move
+
+---
+
 # live terminals
 
 in a real terminal, this box is a **running PTY** — htop, a REPL,
