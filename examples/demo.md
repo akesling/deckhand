@@ -12,6 +12,7 @@ theme:
 ```theme
 pin_title: false
 align_y: center
+h1_style: banner
 ```
 
 # deckhand

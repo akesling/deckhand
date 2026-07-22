@@ -12,11 +12,12 @@ theme:
 ```theme
 pin_title: false
 align_y: center
+h1_style: banner
 ```
 
-# deckhand ⚓
+# deckhand
 
-a slide deck, in your terminal
+⚓ a slide deck, in your terminal
 
 *this demo is the real deckhand core, compiled to WebAssembly*
 

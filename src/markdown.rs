@@ -54,6 +54,8 @@ struct Renderer<'t> {
     link_url: Option<String>,
     suppress_blank: bool,
     table: Option<TableAcc>,
+    /// Collecting an H1's text for banner rendering (`h1_style: banner`).
+    banner: Option<String>,
 }
 
 impl<'t> Renderer<'t> {
@@ -73,6 +75,7 @@ impl<'t> Renderer<'t> {
             link_url: None,
             suppress_blank: false,
             table: None,
+            banner: None,
         }
     }
 
@@ -192,6 +195,22 @@ impl<'t> Renderer<'t> {
             self.table_event(ev);
             return;
         }
+        // Inside a banner heading, collect plain text and drop inline
+        // styling — a 3×5 pixel font has no italics.
+        if let Some(buf) = self.banner.as_mut() {
+            match &ev {
+                Event::Text(t) | Event::Code(t) => {
+                    buf.push_str(t);
+                    return;
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    buf.push(' ');
+                    return;
+                }
+                Event::End(TagEnd::Heading(_)) => {} // handled in end()
+                _ => return,
+            }
+        }
         match ev {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
@@ -244,6 +263,9 @@ impl<'t> Renderer<'t> {
             Tag::Paragraph => self.blank(),
             Tag::Heading { level, .. } => {
                 self.blank();
+                if level == HeadingLevel::H1 && self.theme.h1_banner {
+                    self.banner = Some(String::new());
+                }
                 let style = match level {
                     HeadingLevel::H1 => Style::default()
                         .fg(self.theme.h1)
@@ -340,6 +362,22 @@ impl<'t> Renderer<'t> {
         match tag {
             TagEnd::Paragraph => self.flush(),
             TagEnd::Heading(level) => {
+                if let Some(buf) = self.banner.take() {
+                    if let Some(rows) = crate::banner::render(buf.trim(), self.width) {
+                        self.styles.pop();
+                        let style = Style::default()
+                            .fg(self.theme.h1)
+                            .add_modifier(Modifier::BOLD);
+                        for row in rows {
+                            self.lines.push(Line::from(Span::styled(row, style)));
+                        }
+                        return;
+                    }
+                    // No glyphs or no room: plain H1 text (the heading
+                    // style is still on the stack), then the normal
+                    // underline path below.
+                    self.push_words(buf.trim());
+                }
                 let heading_w = self.cur_w.min(self.width);
                 self.flush();
                 self.styles.pop();
@@ -548,6 +586,38 @@ mod tests {
         let text = r("- one\n- two\n", 40);
         assert_eq!(text.height(), 2);
         assert!(format!("{:?}", text.lines[0]).contains('•'));
+    }
+
+    #[test]
+    fn banner_h1_renders_block_glyphs() {
+        let theme = Theme {
+            h1_banner: true,
+            ..Theme::default()
+        };
+        let text = render("# deckhand\n\nbody", 60, &theme);
+        // 3 banner rows + blank + body; no underline rule.
+        assert!(text.height() >= 4, "height {}", text.height());
+        let first = format!("{:?}", text.lines[0]);
+        assert!(first.contains('▀') || first.contains('█'), "{first}");
+        assert!(!format!("{text:?}").contains("────"));
+        // H2s are untouched.
+        let text = render("## deeper", 60, &theme);
+        assert_eq!(text.height(), 1);
+    }
+
+    #[test]
+    fn banner_falls_back_when_unrenderable() {
+        let theme = Theme {
+            h1_banner: true,
+            ..Theme::default()
+        };
+        // Unsupported glyph → normal heading with its underline.
+        let text = render("# hello ⚓", 60, &theme);
+        assert_eq!(text.height(), 2);
+        assert!(format!("{:?}", text.lines[1]).contains('─'));
+        // Too narrow → same fallback.
+        let text = render("# an extremely long banner title here", 20, &theme);
+        assert!(format!("{text:?}").contains('─'));
     }
 
     #[test]

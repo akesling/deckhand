@@ -360,6 +360,7 @@ by field (each later one wins):
   "snapshot_border": "yellow",
   "status_bg": "#3a3a3a",
   "status_fg": 250,
+  "h1_style": "banner",
   "h1": "yellow",
   "h2": "light-yellow",
   "bullet": "magenta",
@@ -397,6 +398,11 @@ area (i.e. at row `margin_y`), with `title_gap` blank rows (default 1)
 below it; the body lays out in the remaining space, still following
 `align_y`. That's how a title sits on the same row on every slide
 while the body stays centered.
+
+`h1_style: "banner"` draws level-1 headings as large block glyphs,
+three rows tall (A–Z, 0–9, light punctuation — case-insensitive). A
+heading the font can't render, or that won't fit the width, falls
+back to a normal H1. The demo decks use it on their title slides.
 
 `qr_dark`/`qr_light` color QR blocks (modules / background, quiet zone
 included) and default to true black on true white. Restyle at your own

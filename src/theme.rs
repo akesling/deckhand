@@ -111,6 +111,11 @@ pub struct ThemeConfig {
     /// Status bar text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_fg: Option<ColorSpec>,
+    /// "normal" (default) or "banner": banner draws H1s as large
+    /// block glyphs (three rows tall), falling back to normal for
+    /// headings with unsupported characters or too little width.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub h1_style: Option<String>,
     /// Level-1 headings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub h1: Option<ColorSpec>,
@@ -165,6 +170,7 @@ impl ThemeConfig {
             snapshot_border: over.snapshot_border.or(self.snapshot_border),
             status_bg: over.status_bg.or(self.status_bg),
             status_fg: over.status_fg.or(self.status_fg),
+            h1_style: over.h1_style.or(self.h1_style),
             h1: over.h1.or(self.h1),
             h2: over.h2.or(self.h2),
             bullet: over.bullet.or(self.bullet),
@@ -239,6 +245,8 @@ pub struct Theme {
     pub status_bg: Color,
     /// Status bar text.
     pub status_fg: Color,
+    /// Draw H1s as large block glyphs ([`crate::banner`]).
+    pub h1_banner: bool,
     /// Level-1 headings.
     pub h1: Color,
     /// Level-2 headings.
@@ -282,6 +290,7 @@ impl Default for Theme {
             snapshot_border: None,
             status_bg: Color::Indexed(236),
             status_fg: Color::Indexed(250),
+            h1_banner: false,
             h1: Color::Cyan,
             h2: Color::LightBlue,
             bullet: Color::Cyan,
@@ -369,6 +378,15 @@ impl Theme {
         }
         if let Some(g) = cfg.title_gap {
             t.title_gap = g.min(20);
+        }
+        if let Some(s) = cfg.h1_style {
+            t.h1_banner = match s.as_str() {
+                "normal" => false,
+                "banner" => true,
+                other => {
+                    bail!("theme.h1_style: expected \"normal\" or \"banner\", got {other:?}")
+                }
+            };
         }
         if let Some(b) = cfg.border_type {
             t.border_type = match b.as_str() {

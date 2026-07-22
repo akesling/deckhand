@@ -49,20 +49,28 @@ pub fn load(input: &str) -> Result<Loaded> {
 }
 
 /// Files whose changes should trigger a live reload for `input`: the
-/// deck file itself, everything a manifest references, and the user
-/// theme file. Empty for remote decks (nothing local to watch).
+/// deck file itself, everything a manifest references, referenced
+/// images, and the user theme file. Empty for remote decks (nothing
+/// local to watch).
 pub fn watch_paths(input: &str) -> Vec<PathBuf> {
     if input.starts_with("http://") || input.starts_with("https://") {
         return Vec::new();
     }
     let entry = PathBuf::from(input);
     let mut out = vec![entry.clone()];
+    let base = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
     if entry.extension().and_then(|e| e.to_str()) == Some("json")
         && let Ok(src) = std::fs::read_to_string(&entry)
     {
-        let base = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
         for rel in crate::config::referenced_files(&src) {
             out.push(base.join(rel));
+        }
+    }
+    // Images redraw on reload too; a deck that doesn't parse right now
+    // just watches its files.
+    if let Ok((deck, _)) = deck::load(&entry) {
+        for img in deck.image_paths() {
+            out.push(base.join(img));
         }
     }
     if let Some(theme_path) = crate::theme::user_config_path() {
@@ -250,6 +258,20 @@ mod tests {
         assert_eq!(
             gist_id("https://gist.githubusercontent.com/alex/abc/raw/deck.md"),
             None
+        );
+    }
+
+    #[test]
+    fn watch_paths_include_referenced_images() {
+        let dir = std::env::temp_dir().join(format!("deckhand-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let deck = dir.join("deck.md");
+        std::fs::write(&deck, "# a\n![pic](images/arch.png)\n").unwrap();
+        let paths = watch_paths(deck.to_str().unwrap());
+        assert!(paths.contains(&deck));
+        assert!(
+            paths.contains(&dir.join("images/arch.png")),
+            "paths: {paths:?}"
         );
     }
 

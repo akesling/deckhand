@@ -14,7 +14,7 @@
   },
   "columns": [
     { "file": "slides/intro.md",
-      "theme": { "pin_title": false, "align_y": "center" } },
+      "theme": { "pin_title": false, "align_y": "center", "h1_style": "banner" } },
     [
       "slides/layout.md",
       { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }

@@ -72,6 +72,7 @@
 //! | [`theme`] | theming: layout, borders, colors, precedence |
 //! | [`qr`] | ```` ```qr ```` fences → scannable unicode QR codes |
 //! | [`ascii_image`] | markdown images → colored ASCII art |
+//! | [`banner`] | `h1_style: banner` → block-glyph headings |
 //! | [`presenter`] | shared presentation core + provider trait |
 //! | [`hints`] | overview quick-jump codes |
 //! | [`compile`] | flatten any deck to single-file markdown |
@@ -122,6 +123,7 @@
 #![warn(missing_docs)]
 
 pub mod ascii_image;
+pub mod banner;
 pub mod compile;
 pub mod config;
 pub mod deck;

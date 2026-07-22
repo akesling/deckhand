@@ -231,6 +231,20 @@ impl Deck {
         }
     }
 
+    /// Every image path referenced by the deck, as authored, in deck
+    /// order (row cells included) — for live-reload watching.
+    pub fn image_paths(&self) -> Vec<&str> {
+        self.columns
+            .iter()
+            .flat_map(|c| &c.slides)
+            .flat_map(|s| s.leaf_segments())
+            .filter_map(|seg| match seg {
+                Segment::Image(img) => Some(img.path.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Depth-first traversal order: all slides of column 0 top-to-bottom,
     /// then column 1, etc. This is the order `space` walks through.
     pub fn flat(&self) -> Vec<(usize, usize)> {
