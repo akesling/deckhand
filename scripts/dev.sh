@@ -14,7 +14,7 @@ command -v bun >/dev/null || {
   exit 1
 }
 
-cd "${_site}"
+cd "${_site}" || exit 1
 [ -d node_modules ] || bun install
 mkdir -p dist/js
 

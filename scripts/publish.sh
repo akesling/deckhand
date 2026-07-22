@@ -12,7 +12,7 @@ set -euo pipefail
 # Tool homes for minimal shells (CI, cron, editors).
 export PATH="${HOME}/.cargo/bin:${HOME}/.bun/bin:/opt/homebrew/bin:${PATH}"
 _root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "${_root}"
+cd "${_root}" || exit 1
 
 _for_real=false
 case "${1:-}" in
@@ -43,7 +43,7 @@ trap _cleanup EXIT INT TERM
 
 echo "== staging a pristine clone of HEAD"
 git clone --quiet --no-hardlinks "${_root}" "${_stage}/deckhand"
-cd "${_stage}/deckhand"
+cd "${_stage}/deckhand" || exit 1
 
 echo "== verifying package contents"
 _list="$(cargo package --list --locked)"
@@ -51,7 +51,9 @@ if echo "${_list}" | grep -q node_modules; then
   echo "package would include node_modules files — aborting" >&2
   exit 1
 fi
-echo "${_list}" | sed 's/^/   /'
+while IFS= read -r _line; do
+  echo "   ${_line}"
+done <<<"${_list}"
 echo "   ($(echo "${_list}" | wc -l | tr -d ' ') files)"
 
 echo "== cargo publish --dry-run"

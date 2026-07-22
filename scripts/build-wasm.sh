@@ -6,13 +6,11 @@ set -euo pipefail
 # Tool homes for minimal shells (CI, cron, editors).
 export PATH="${HOME}/.cargo/bin:${HOME}/.bun/bin:/opt/homebrew/bin:${PATH}"
 _root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "${_root}"
+cd "${_root}" || exit 1
 
 _profile=release
-_cargo_flags=(--release)
 if [ "${1:-}" = "--dev" ]; then
   _profile=debug
-  _cargo_flags=()
 fi
 
 # The CLI version must match the wasm-bindgen crate in Cargo.lock, or the
@@ -29,7 +27,11 @@ if [ "${_have}" != "${_required}" ]; then
   exit 1
 fi
 
-cargo build --locked --lib --target wasm32-unknown-unknown ${_cargo_flags[@]+"${_cargo_flags[@]}"}
+if [ "${_profile}" = "release" ]; then
+  cargo build --locked --lib --target wasm32-unknown-unknown --release
+else
+  cargo build --locked --lib --target wasm32-unknown-unknown
+fi
 wasm-bindgen "target/wasm32-unknown-unknown/${_profile}/deckhand.wasm" \
   --target web --out-dir site/wasm
 

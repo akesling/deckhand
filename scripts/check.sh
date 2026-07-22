@@ -4,7 +4,7 @@ set -euo pipefail
 # Tool homes for minimal shells (CI, cron, editors).
 export PATH="${HOME}/.cargo/bin:${HOME}/.bun/bin:/opt/homebrew/bin:${PATH}"
 _root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "${_root}"
+cd "${_root}" || exit 1
 
 "${_root}/scripts/lint.sh"
 

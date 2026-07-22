@@ -13,7 +13,7 @@ command -v bun >/dev/null || {
 
 "${_root}/scripts/build-wasm.sh"
 
-cd "${_site}"
+cd "${_site}" || exit 1
 [ -d node_modules ] || bun install
 mkdir -p dist/js
 bun run build:ts
