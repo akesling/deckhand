@@ -1,11 +1,11 @@
 # themes & layout
 
-every title in this deck sits on the same row — set once, deck-wide,
-in the manifest's `theme`:
+every slide in this deck shares one shape — title on a fixed row,
+body hanging just below it — set once, deck-wide, in the manifest:
 
 ```json
 "theme": { "pin_title": true, "title_gap": 2,
-           "margin_x": 3, "margin_y": 1 }
+           "align_y": "top", "margin_x": 3, "margin_y": 2 }
 ```
 
-the body floats, **vertically centered**, in the space that's left ↓
+there's a longer slide below — watch what *doesn't* move ↓

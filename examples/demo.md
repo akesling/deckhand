@@ -4,12 +4,14 @@ theme:
   border_type: rounded
   pin_title: true
   title_gap: 2
+  align_y: top
   margin_x: 3
-  margin_y: 1
+  margin_y: 2
 ---
 
 ```theme
 pin_title: false
+align_y: center
 ```
 
 # deckhand
@@ -82,43 +84,48 @@ fn main() {
 
 # themes & layout
 
-every title in this deck sits on the same row — set once, deck-wide,
-in the frontmatter:
+every slide in this deck shares one shape — title on a fixed row,
+body hanging just below it — set once, deck-wide, in the frontmatter:
 
 ```yaml
 theme:
-  pin_title: true    # nail the heading to the top…
-  title_gap: 2       # …with this much air under it
-  margin_x: 3        # minimum air, left and right
-  margin_y: 1        # and above / below
+  pin_title: true   # carve the heading out…
+  title_gap: 2      # …with this much air under it
+  align_y: top      # body hangs from the title, no dead space
+  margin_x: 3       # minimum air, left and right
+  margin_y: 2       # and above / below
 ```
 
-the body floats, **vertically centered**, in the space that's left ↓
+there's a longer slide below — watch what *doesn't* move ↓
 
 --
 
 ## the title stays put
 
-more content this time — the heading didn't move, the body just
-grew around its own center
+more content this time — the heading didn't move, and the body
+grew downward instead of floating away from it
 
 - layout is one box, two axes, three questions: air (`margin_x` /
   `margin_y`), cap (`max_width` / `max_height`), and where leftover
   space goes (`align_x` / `align_y`)
+- `align_y: center` floats the body in the leftover space instead —
+  better for sparse statement slides than text-heavy ones
 - headings are always bold; `h1` / `h2` set their colors
-- override anything per-slide with a ```` ```theme ```` fence —
-  the title slide of this deck opts out with `pin_title: false`
+- override anything per-slide with a ```` ```theme ```` fence, like
+  the next slide down
 
 --
 
 ```theme
 pin_title: false
+align_y: center
 ```
 
 ## …and floats when you opt out
 
-this slide's fence sets `pin_title: false`, so title and body
-center together as one block
+this slide's fence sets `pin_title: false` and
+`align_y: center` — title and body center together as one block,
+the same statement-slide look as this deck's opening and fin
 
 ???
 
@@ -199,6 +206,7 @@ ASCII art, too)
 
 ```theme
 pin_title: false
+align_y: center
 ```
 
 # fin

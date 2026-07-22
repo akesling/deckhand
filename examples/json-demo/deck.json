@@ -8,11 +8,13 @@
     "max_width": 84,
     "pin_title": true,
     "title_gap": 2,
+    "align_y": "top",
     "margin_x": 3,
-    "margin_y": 1
+    "margin_y": 2
   },
   "columns": [
-    { "file": "slides/intro.md", "theme": { "pin_title": false } },
+    { "file": "slides/intro.md",
+      "theme": { "pin_title": false, "align_y": "center" } },
     [
       "slides/layout.md",
       { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }
@@ -21,7 +23,7 @@
       "slides/titles.md",
       "slides/titles-deep.md",
       { "file": "slides/titles-float.md",
-        "theme": { "pin_title": false },
+        "theme": { "pin_title": false, "align_y": "center" },
         "notes": "Flip up and down here to watch the heading jump — that's pin_title." }
     ],
     [
@@ -47,7 +49,7 @@
     ],
     { "file": "slides/qr.md", "notes": "Scannable straight off the screen — drawn black-on-white whatever the theme says." },
     { "file": "slides/fin.md",
-      "theme": { "pin_title": false },
+      "theme": { "pin_title": false, "align_y": "center" },
       "notes_file": "slides/fin-notes.md" }
   ]
 }
