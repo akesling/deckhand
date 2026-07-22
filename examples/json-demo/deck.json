@@ -14,6 +14,15 @@
       { "file": "slides/layout-deep.md", "notes": "Only come down here if someone asks how columns map to files." }
     ],
     [
+      { "file": "slides/titles.md",
+        "theme": { "vertical_align": "top", "h1": "magenta", "h2": "light-magenta" },
+        "notes": "The pin comes from this entry's theme, not the file." },
+      { "file": "slides/titles-deep.md",
+        "theme": { "vertical_align": "top", "h1": "magenta", "h2": "light-magenta" } },
+      { "file": "slides/titles-float.md",
+        "notes": "Flip up and down here to watch the heading jump — that's vertical_align." }
+    ],
+    [
       {
         "terminal": { "command": "htop" },
         "title": "htop",
