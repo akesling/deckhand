@@ -119,14 +119,15 @@ deckhand notes
 
 ---
 
-# take it with you
+# qr codes
 
 ```qr
-https://deckhand.sh
+https://en.wikipedia.org/wiki/QR_code
 ```
 
 a ```` ```qr ```` fence renders any URL or text, scannable from the
-audience — and `![alt](image.png)` on its own line renders as ASCII art
+audience — this one explains itself. (`![alt](image.png)` on its own
+line renders as ASCII art, too)
 
 ---
 

@@ -95,14 +95,14 @@ type a code to teleport; this is how you field
 
 ---
 
-# take it with you
+# qr codes
 
 ```qr
-https://deckhand.sh
+https://en.wikipedia.org/wiki/QR_code
 ```
 
 a ```` ```qr ```` fence renders any URL or text — scan this one right
-off the screen
+off the screen; it explains itself
 
 ---
 
