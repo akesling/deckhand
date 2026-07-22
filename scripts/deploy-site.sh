@@ -25,7 +25,7 @@ if [ ! -d "${_site}/_site" ]; then
   exit 1
 fi
 
-_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand}"
+_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
 cd "${_site}" || exit 1
 
 # Cloudflare derives the alias subdomain from the branch name:

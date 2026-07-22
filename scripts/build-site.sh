@@ -32,7 +32,7 @@ DECKHAND_VERSION="${_version}" bun run build:site
 # aliases that deploy-site.sh publishes each release under.
 echo "== versions.json"
 _site_url="${DECKHAND_SITE_URL:-https://deckhand.sh}"
-_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand}"
+_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
 _versions="$(
   {
     git -C "${_root}" tag -l 'v*' | sed 's/^v//'

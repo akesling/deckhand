@@ -82,7 +82,7 @@ Releases (tag pushes, cut by `scripts/release.sh`) trigger the Release
 workflow, which builds the site and runs `scripts/deploy-site.sh`:
 `wrangler pages deploy` to the Cloudflare Pages project — once to
 production, and once under the tag's branch alias (`v0.1.0` →
-`v0-1-0.deckhand.pages.dev`), which keeps that release's site up
+`v0-1-0.deckhand-sh.pages.dev`), which keeps that release's site up
 forever.
 
 `scripts/build-site.sh` bakes the crate version into the footer's
@@ -96,7 +96,7 @@ One-time Cloudflare setup: create a custom API token scoped to
 **Account → Cloudflare Pages → Edit** only (don't use `wrangler login`
 — its OAuth grant is account-wide and not narrowable), create the
 project with
-`bunx wrangler pages project create deckhand --production-branch main`,
+`bunx wrangler pages project create deckhand-sh --production-branch main`,
 then give the GitHub repo `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` secrets. The same two env vars drive local
 deploys. `CLOUDFLARE_PAGES_PROJECT` and `DECKHAND_SITE_URL` override
