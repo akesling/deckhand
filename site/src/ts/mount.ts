@@ -89,6 +89,39 @@ export function mountDeck(
     return false;
   });
 
+  // Touch: tap or swipe left advances, swipe right goes back — the
+  // same linear walk as space/shift-space, so a phone reaches every
+  // slide (columns and deeper rows) without a keyboard. Vertical
+  // movement stays with the page (touch-action: pan-y in site.css),
+  // so scrolling past the terminal still works.
+  let touchStart: { x: number; y: number; at: number } | null = null;
+  el.addEventListener(
+    "touchstart",
+    (ev) => {
+      touchStart = null;
+      if (ev.touches.length !== 1) return;
+      const t = ev.touches[0];
+      touchStart = { x: t.clientX, y: t.clientY, at: Date.now() };
+    },
+    { passive: true },
+  );
+  el.addEventListener("touchend", (ev) => {
+    if (!touchStart) return;
+    const t = ev.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    const elapsed = Date.now() - touchStart.at;
+    touchStart = null;
+    const isSwipe = Math.abs(dx) >= 48 && Math.abs(dx) > 1.5 * Math.abs(dy);
+    const isTap = Math.abs(dx) < 12 && Math.abs(dy) < 12 && elapsed < 350;
+    if (!isSwipe && !isTap) return;
+    deck.key(" ", false, isSwipe && dx > 0); // swipe right = back
+    paint();
+    // No synthetic click: a tap shouldn't focus the hidden textarea
+    // and summon the platform keyboard.
+    ev.preventDefault();
+  });
+
   const refit = () => {
     const cols = term.cols;
     const rows = term.rows;

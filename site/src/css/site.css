@@ -320,6 +320,10 @@ code, pre, kbd, .terminal-frame { font-family: inherit; }
 
 .terminal-frame {
   background: var(--surface-terminal);
+  /* Horizontal gestures belong to the deck (swipe/tap navigation in
+     ts/mount.ts); vertical ones keep scrolling the page. */
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
   /* Fixed height: the fit addon derives rows from this, so it must not
      depend on the terminal's own content or fitting loops forever;
      min() keeps the hero on-screen for short laptop viewports. */
