@@ -349,6 +349,7 @@ by field (each later one wins):
   "max_height": 30,
   "margin": 4,
   "vertical_align": "top",
+  "pin_title": true,
   "border_type": "rounded",
   "accent": "magenta",
   "muted": 244,
@@ -376,7 +377,10 @@ terminals that are showing a baked-in snapshot, superseding
 `rounded`, `double`, or `thick`; `vertical_align` is `center` or `top`;
 `max_width`/`margin` are in terminal columns and `max_height` in rows
 (default unlimited — it caps the content box, including fill terminals,
-and the capped box still follows `vertical_align`).
+and the capped box still follows `vertical_align`). `pin_title` nails a
+slide-leading heading to the top row while the body below keeps
+following `vertical_align` — the way to stop titles drifting
+slide-to-slide without giving up centered content.
 
 `qr_dark`/`qr_light` color QR blocks (modules / background, quiet zone
 included) and default to true black on true white. Restyle at your own

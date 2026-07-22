@@ -15,12 +15,12 @@
     ],
     [
       { "file": "slides/titles.md",
-        "theme": { "vertical_align": "top", "h1": "magenta", "h2": "light-magenta" },
+        "theme": { "pin_title": true, "h1": "magenta", "h2": "light-magenta" },
         "notes": "The pin comes from this entry's theme, not the file." },
       { "file": "slides/titles-deep.md",
-        "theme": { "vertical_align": "top", "h1": "magenta", "h2": "light-magenta" } },
+        "theme": { "pin_title": true, "h1": "magenta", "h2": "light-magenta" } },
       { "file": "slides/titles-float.md",
-        "notes": "Flip up and down here to watch the heading jump — that's vertical_align." }
+        "notes": "Flip up and down here to watch the heading jump — that's pin_title." }
     ],
     [
       {

@@ -207,6 +207,7 @@ All fields, all optional:
   "max_height": 30,
   "margin": 4,
   "vertical_align": "top",
+  "pin_title": true,
   "border_type": "rounded",
   "accent": "magenta",
   "muted": 244,
@@ -238,7 +239,10 @@ slide's `theme` fence to mark that slide's captures distinctly; unset,
 snapshots use `term_border` like any terminal. `border_type` is `plain`, `rounded`, `double`, or
 `thick`; `vertical_align` is `center` or `top`. `max_width` / `margin`
 are terminal columns; `max_height` is rows and caps the content box —
-including fill terminals.
+including fill terminals. `pin_title` nails a slide-leading heading to
+the top row while the body below keeps following `vertical_align` —
+titles stop drifting slide-to-slide without giving up centered
+content.
 
 > Tip: prefer palette indexes (16–255) or hex over ANSI names for
 > grays. Schemes like solarized remap the 16 ANSI colors, turning ANSI

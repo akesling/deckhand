@@ -72,6 +72,10 @@ pub struct ThemeConfig {
     /// "center" (default) or "top".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<String>,
+    /// Anchor a slide-leading heading to the top of the slide; the
+    /// body below it still follows `vertical_align`. Default false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_title: Option<bool>,
     /// "plain" (default), "rounded", "double", or "thick".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_type: Option<String>,
@@ -136,6 +140,7 @@ impl ThemeConfig {
             max_height: over.max_height.or(self.max_height),
             margin: over.margin.or(self.margin),
             vertical_align: over.vertical_align.or(self.vertical_align),
+            pin_title: over.pin_title.or(self.pin_title),
             border_type: over.border_type.or(self.border_type),
             accent: over.accent.or(self.accent),
             muted: over.muted.or(self.muted),
@@ -178,6 +183,9 @@ pub struct Theme {
     pub margin: u16,
     /// Vertical placement of slide content.
     pub vertical_align: VAlign,
+    /// Slide-leading headings stick to the top; the body follows
+    /// `vertical_align`.
+    pub pin_title: bool,
     /// Border style for terminals, overview boxes, and overlays.
     pub border_type: BorderType,
     /// Focused borders, overview selection, help chrome, key hints.
@@ -222,6 +230,7 @@ impl Default for Theme {
             max_height: u16::MAX,
             margin: 2,
             vertical_align: VAlign::Center,
+            pin_title: false,
             border_type: BorderType::Plain,
             accent: Color::Cyan,
             // Mid-gray from the 256-color palette rather than ANSI
@@ -281,6 +290,9 @@ impl Theme {
         }
         if let Some(m) = cfg.margin {
             t.margin = m.min(30);
+        }
+        if let Some(p) = cfg.pin_title {
+            t.pin_title = p;
         }
         if let Some(v) = cfg.vertical_align {
             t.vertical_align = match v.as_str() {
@@ -412,6 +424,16 @@ mod tests {
         let t = Theme::resolve(vec![cfg]).unwrap();
         assert_eq!(t.term_border, Color::Blue);
         assert_eq!(t.snapshot_border(), Color::Yellow);
+    }
+
+    #[test]
+    fn pin_title_resolves_and_merges() {
+        let t = Theme::resolve(vec![]).unwrap();
+        assert!(!t.pin_title);
+        let user: ThemeConfig = serde_json::from_str(r#"{ "pin_title": true }"#).unwrap();
+        let deck: ThemeConfig = serde_json::from_str(r#"{ "accent": "red" }"#).unwrap();
+        let t = Theme::resolve(vec![user, deck]).unwrap();
+        assert!(t.pin_title); // survives an overlay that doesn't set it
     }
 
     #[test]

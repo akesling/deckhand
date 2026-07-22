@@ -268,6 +268,24 @@ fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
 /// Columns of blank space between row cells.
 const ROW_GAP: u16 = 2;
 
+/// If markdown source opens with a heading (blank lines aside), split
+/// it off: (heading line, everything after). Feeds `pin_title`.
+fn split_leading_heading(src: &str) -> Option<(String, String)> {
+    let mut consumed = 0usize;
+    for part in src.split_inclusive('\n') {
+        let t = part.trim();
+        consumed += part.len();
+        if t.is_empty() {
+            continue;
+        }
+        if t.starts_with('#') {
+            return Some((t.to_string(), src[consumed..].to_string()));
+        }
+        return None;
+    }
+    None
+}
+
 /// One fixed-height piece of a row cell (or a full-width segment —
 /// the same builder serves both).
 enum CellItem {
@@ -911,6 +929,44 @@ impl<P: TerminalProvider> Presenter<P> {
         }
         let x = area.x + (area.width - w) / 2;
 
+        // Pinned title: carve the leading heading off the first
+        // segment and anchor it to the top of the slide; the body
+        // below still follows `vertical_align`.
+        let mut title: Option<Text<'static>> = None;
+        let mut first_md_body: Option<String> = None;
+        if theme.pin_title
+            && let Some(Segment::Markdown(src)) =
+                self.deck.slide(self.col, self.row).segments.first()
+            && let Some((head, rest)) = split_leading_heading(src)
+        {
+            title = Some(markdown::render(&head, w, &theme));
+            first_md_body = Some(rest);
+        }
+        let title_h = title
+            .as_ref()
+            .map(|t| (t.height() as u16).min(area.height))
+            .unwrap_or(0);
+        if let Some(t) = title {
+            let rect = Rect {
+                x,
+                y: area.y,
+                width: w,
+                height: title_h,
+            };
+            Paragraph::new(t).render(rect, buf);
+        }
+        // The body lays out in what's left below the title (plus a
+        // separating blank line).
+        let carved = if title_h > 0 { title_h + 1 } else { 0 };
+        let area = Rect {
+            y: area.y + carved.min(area.height),
+            height: area.height.saturating_sub(carved),
+            ..area
+        };
+        if area.height == 0 {
+            return;
+        }
+
         enum RenderItem {
             Text(Text<'static>),
             Term(TermBlock),
@@ -919,7 +975,23 @@ impl<P: TerminalProvider> Presenter<P> {
         }
         let box_h = area.height.min(theme.max_height);
         let mut items: Vec<(Option<u16>, RenderItem)> = Vec::new();
-        for seg in &self.deck.slide(self.col, self.row).segments {
+        for (i, seg) in self
+            .deck
+            .slide(self.col, self.row)
+            .segments
+            .iter()
+            .enumerate()
+        {
+            if i == 0
+                && let Some(rest) = &first_md_body
+            {
+                let text = markdown::render(rest, w, &theme);
+                let h = text.height() as u16;
+                if h > 0 {
+                    items.push((Some(h), RenderItem::Text(text)));
+                }
+                continue;
+            }
             match seg {
                 // Fill sizing only exists at the top level; everything
                 // else routes through the shared cell builder.
@@ -1446,6 +1518,46 @@ mod tests {
             .flat_map(|y| (0..area.width).map(move |x| (x, y)))
             .any(|pos| buf[pos].fg == Color::Red && buf[pos].bg == Color::White);
         assert!(themed, "qr_dark/qr_light overrides not applied");
+    }
+
+    #[test]
+    fn pinned_title_sticks_while_body_centers() {
+        let deck =
+            crate::deck::parse("```theme\npin_title: true\n```\n# TITLE\n\nbody\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 40, 20);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let row = |y: u16| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        // Heading anchored to the very top…
+        assert!(row(0).contains("TITLE"), "row 0: {:?}", row(0));
+        // …while the body centers in the space below (19 content rows,
+        // title+underline+gap = 3, one body row → y = 3 + 15/2 = 10).
+        let body_y = (0..19).find(|&y| row(y).contains("body")).unwrap();
+        assert!(
+            (8..=12).contains(&body_y),
+            "body at y={body_y}, expected centered"
+        );
+
+        // Without pin_title the title floats down with the body.
+        let deck = crate::deck::parse("# TITLE\n\nbody\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let row = |y: u16| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        let title_y = (0..19).find(|&y| row(y).contains("TITLE")).unwrap();
+        assert!(
+            title_y > 3,
+            "unpinned title at y={title_y}, expected floating"
+        );
     }
 
     #[test]
