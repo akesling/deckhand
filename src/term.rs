@@ -116,6 +116,37 @@ impl TermSession {
         p.set_scrollback(new);
     }
 
+    /// Route a wheel tick at cell (col, row): into the child when it
+    /// wants it (mouse reporting, or alternate-screen arrow keys),
+    /// otherwise through the local history view.
+    pub fn wheel(&mut self, up: bool, col: u16, row: u16) {
+        let to_child = {
+            let p = self.parser.lock().unwrap();
+            wheel_bytes(p.screen(), up, col, row)
+        };
+        match to_child {
+            Some(bytes) => self.write_input(&bytes),
+            None => self.scroll_lines(if up { 3 } else { -3 }),
+        }
+    }
+
+    /// Forward a left click at (col, row) when the child reports mouse;
+    /// returns whether it was sent (false keeps the caller's own click
+    /// semantics).
+    pub fn click(&mut self, col: u16, row: u16) -> bool {
+        let report = {
+            let p = self.parser.lock().unwrap();
+            click_bytes(p.screen(), col, row)
+        };
+        match report {
+            Some(bytes) => {
+                self.write_input(&bytes);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Scroll the view by half the viewport height.
     pub fn scroll_page(&mut self, up: bool) {
         let half = (self.rows / 2).max(1) as isize;
@@ -159,5 +190,121 @@ impl TermSession {
     pub fn kill(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// What a wheel tick should send to the child, per its screen state:
+/// mouse-reporting programs get a wheel report, alternate-screen
+/// programs without mouse reporting get arrow keys (xterm's
+/// "alternate scroll" convention — how `less` and `vim` scroll under a
+/// wheel), and `None` means the child doesn't care — the caller moves
+/// the local history view instead.
+fn wheel_bytes(screen: &vt100::Screen, up: bool, col: u16, row: u16) -> Option<Vec<u8>> {
+    if screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None {
+        return Some(mouse_report(
+            screen,
+            if up { 64 } else { 65 },
+            col,
+            row,
+            true,
+        ));
+    }
+    if screen.alternate_screen() {
+        let arrow: &[u8] = match (screen.application_cursor(), up) {
+            (true, true) => b"\x1bOA",
+            (true, false) => b"\x1bOB",
+            (false, true) => b"\x1b[A",
+            (false, false) => b"\x1b[B",
+        };
+        return Some(arrow.repeat(3));
+    }
+    None
+}
+
+/// A left press+release pair, if the child asked for mouse reports.
+fn click_bytes(screen: &vt100::Screen, col: u16, row: u16) -> Option<Vec<u8>> {
+    if screen.mouse_protocol_mode() == vt100::MouseProtocolMode::None {
+        return None;
+    }
+    let mut bytes = mouse_report(screen, 0, col, row, true);
+    bytes.extend(mouse_report(screen, 0, col, row, false));
+    Some(bytes)
+}
+
+/// One mouse report in the child's negotiated encoding (1-based cells).
+fn mouse_report(screen: &vt100::Screen, button: u8, col: u16, row: u16, press: bool) -> Vec<u8> {
+    let (x, y) = (u32::from(col) + 1, u32::from(row) + 1);
+    if screen.mouse_protocol_encoding() == vt100::MouseProtocolEncoding::Sgr {
+        let suffix = if press { 'M' } else { 'm' };
+        return format!("\x1b[<{button};{x};{y}{suffix}").into_bytes();
+    }
+    // Legacy X10 bytes (utf8 mode only diverges past column 95, where
+    // real programs negotiate SGR anyway). Release is button 3;
+    // coordinates saturate at the encodable maximum.
+    let b = if press { button } else { 3 };
+    vec![
+        0x1b,
+        b'[',
+        b'M',
+        32 + b,
+        (32 + x.min(223)) as u8,
+        (32 + y.min(223)) as u8,
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn screen_after(setup: &[u8]) -> vt100::Parser {
+        let mut p = vt100::Parser::new(24, 80, 0);
+        p.process(setup);
+        p
+    }
+
+    #[test]
+    fn wheel_scrolls_history_on_plain_screens() {
+        let p = screen_after(b"plain output\r\n");
+        assert_eq!(wheel_bytes(p.screen(), true, 5, 5), None);
+    }
+
+    #[test]
+    fn wheel_sends_arrows_to_alternate_screen_tuis() {
+        let p = screen_after(b"\x1b[?1049h");
+        assert_eq!(
+            wheel_bytes(p.screen(), true, 0, 0).unwrap(),
+            b"\x1b[A\x1b[A\x1b[A"
+        );
+        // Application cursor keys (vim, htop) get SS3 arrows.
+        let p = screen_after(b"\x1b[?1049h\x1b[?1h");
+        assert_eq!(
+            wheel_bytes(p.screen(), false, 0, 0).unwrap(),
+            b"\x1bOB\x1bOB\x1bOB"
+        );
+    }
+
+    #[test]
+    fn wheel_reports_to_mouse_aware_programs() {
+        let p = screen_after(b"\x1b[?1000h\x1b[?1006h");
+        assert_eq!(
+            wheel_bytes(p.screen(), true, 2, 4).unwrap(),
+            b"\x1b[<64;3;5M"
+        );
+        let p = screen_after(b"\x1b[?1000h");
+        assert_eq!(
+            wheel_bytes(p.screen(), false, 2, 4).unwrap(),
+            vec![0x1b, b'[', b'M', 32 + 65, 32 + 3, 32 + 5]
+        );
+    }
+
+    #[test]
+    fn clicks_forward_only_when_reported() {
+        let p = screen_after(b"");
+        assert_eq!(click_bytes(p.screen(), 1, 1), None);
+        let p = screen_after(b"\x1b[?1000h\x1b[?1006h");
+        assert_eq!(
+            click_bytes(p.screen(), 1, 1).unwrap(),
+            b"\x1b[<0;2;2M\x1b[<0;2;2m"
+        );
     }
 }

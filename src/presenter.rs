@@ -232,6 +232,19 @@ pub trait TerminalProvider {
         let half = (viewport_rows / 2).max(1) as isize;
         self.scroll(id, if up { half } else { -half });
     }
+    /// A wheel tick over terminal `id`, at cell (col, row) inside it.
+    /// Default: move the local history view three lines.
+    fn wheel(&mut self, id: usize, up: bool, col: u16, row: u16) {
+        let _ = (col, row);
+        self.scroll(id, if up { 3 } else { -3 });
+    }
+    /// A left click at (col, row) inside the focused terminal `id` —
+    /// true when the child program consumed it (it reports mouse),
+    /// false to keep the presenter's own click semantics. Default:
+    /// never consumed.
+    fn click(&mut self, _id: usize, _col: u16, _row: u16) -> bool {
+        false
+    }
     /// Kill and forget these terminals so they respawn (the `R` key).
     fn restart(&mut self, ids: &[usize]);
     /// The deck was replaced and its terminal blocks changed: drop all
@@ -838,6 +851,16 @@ impl<P: TerminalProvider> Presenter<P> {
         self.mode = Mode::Overview { sel: (c, r) };
     }
 
+    /// Whether a terminal lies under (x, y) on the current slide — the
+    /// web front end asks before claiming wheel events for the deck.
+    pub fn terminal_at(&self, x: u16, y: u16) -> bool {
+        matches!(self.mode, Mode::Slide)
+            && self
+                .term_rects
+                .iter()
+                .any(|(_, r)| r.contains(Position::new(x, y)))
+    }
+
     /// Handle a mouse event: click to focus/release terminals or jump in
     /// the overview, wheel to scroll terminal history.
     pub fn on_mouse(&mut self, m: Mouse) {
@@ -868,6 +891,15 @@ impl<P: TerminalProvider> Presenter<P> {
                     if !self.provider.interactive() {
                         return;
                     }
+                    // A focused, mouse-aware program gets the click
+                    // itself; otherwise clicks manage focus/selection.
+                    if let Some(fid) = self.focus
+                        && let Some(&(_, r)) = self.term_rects.iter().find(|(id, _)| *id == fid)
+                        && r.contains(pos)
+                        && self.provider.click(fid, m.x - r.x, m.y - r.y)
+                    {
+                        return;
+                    }
                     self.pending_enable = None;
                     match term_at(&self.term_rects) {
                         Some(id) => {
@@ -886,13 +918,13 @@ impl<P: TerminalProvider> Presenter<P> {
                     }
                 }
                 MouseAction::ScrollUp | MouseAction::ScrollDown => {
-                    if let Some(id) = term_at(&self.term_rects) {
-                        let delta = if m.action == MouseAction::ScrollUp {
-                            3
-                        } else {
-                            -3
-                        };
-                        self.provider.scroll(id, delta);
+                    if let Some(&(id, r)) = self.term_rects.iter().find(|(_, r)| r.contains(pos)) {
+                        self.provider.wheel(
+                            id,
+                            m.action == MouseAction::ScrollUp,
+                            m.x - r.x,
+                            m.y - r.y,
+                        );
                     }
                 }
             },

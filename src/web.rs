@@ -18,7 +18,7 @@ use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 
 use crate::deck::{self, TermBlock};
-use crate::presenter::{Key, KeyPress, Presenter, TermState, TerminalProvider};
+use crate::presenter::{Key, KeyPress, Mouse, MouseAction, Presenter, TermState, TerminalProvider};
 use crate::{compile, config};
 
 /// Browsers can't spawn PTYs. Blocks with a baked-in snapshot (from
@@ -34,7 +34,8 @@ impl TerminalProvider for SnapshotProvider {
     fn prepare(&mut self, block: &TermBlock, _cols: u16, _rows: u16) {
         let Some(snap) = &block.snapshot else { return };
         self.parsers.entry(block.id).or_insert_with(|| {
-            let mut parser = vt100::Parser::new(snap.rows, snap.cols, 0);
+            // Enough scrollback to wheel through a recording's output.
+            let mut parser = vt100::Parser::new(snap.rows, snap.cols, 1000);
             parser.process(&snap.data);
             parser
         });
@@ -66,7 +67,18 @@ impl TerminalProvider for SnapshotProvider {
     }
 
     fn input(&mut self, _: usize, _: &[u8]) {}
-    fn scroll(&mut self, _: usize, _: isize) {}
+
+    fn scroll(&mut self, id: usize, delta: isize) {
+        if let Some(p) = self.parsers.get_mut(&id) {
+            // Alternate-screen snapshots (full-screen TUIs) are a
+            // still frame — there's no history to move through.
+            if p.screen().alternate_screen() {
+                return;
+            }
+            let cur = p.screen().scrollback() as isize;
+            p.set_scrollback((cur + delta).max(0) as usize);
+        }
+    }
     fn restart(&mut self, _: &[usize]) {}
 
     fn reset(&mut self) {
@@ -173,6 +185,31 @@ impl WebDeck {
                 shift,
             });
         }
+    }
+
+    /// Route a wheel tick at cell (x, y). True when the deck consumed
+    /// it (an embedded terminal is under the cursor) — false means the
+    /// page should keep the scroll.
+    pub fn wheel(&mut self, x: u16, y: u16, up: bool) -> bool {
+        if !self.presenter.terminal_at(x, y) {
+            return false;
+        }
+        self.presenter.on_mouse(Mouse {
+            x,
+            y,
+            action: if up {
+                MouseAction::ScrollUp
+            } else {
+                MouseAction::ScrollDown
+            },
+        });
+        true
+    }
+
+    /// Whether an embedded terminal sits at cell (x, y) — the wheel
+    /// handler asks per-event to decide deck-vs-page ownership.
+    pub fn terminal_at(&self, x: u16, y: u16) -> bool {
+        self.presenter.terminal_at(x, y)
     }
 
     /// Render the current frame as ANSI escape sequences for xterm.js.

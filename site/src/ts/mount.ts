@@ -122,6 +122,44 @@ export function mountDeck(
     return false;
   });
 
+  // Wheel: offered to the deck first — over an embedded terminal it
+  // scrolls that terminal's history (or feeds a nested TUI, which
+  // gets mouse reports or arrow keys); anywhere else the page keeps
+  // scrolling. Deltas accumulate so trackpads don't fire a tick per
+  // pixel.
+  let wheelAcc = 0;
+  const cellAt = (ev: WheelEvent): { x: number; y: number } | null => {
+    const screen = el.querySelector(".xterm-screen");
+    if (!screen) return null;
+    const r = screen.getBoundingClientRect();
+    const x = Math.floor(((ev.clientX - r.left) / r.width) * term.cols);
+    const y = Math.floor(((ev.clientY - r.top) / r.height) * term.rows);
+    if (x < 0 || x >= term.cols || y < 0 || y >= term.rows) return null;
+    return { x, y };
+  };
+  el.addEventListener(
+    "wheel",
+    (ev) => {
+      const cell = cellAt(ev);
+      if (!cell || !deck.terminal_at(cell.x, cell.y)) {
+        wheelAcc = 0;
+        return;
+      }
+      ev.preventDefault();
+      // deltaMode: 0 = pixels, 1 = lines, 2 = pages.
+      wheelAcc += ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 160 : 1);
+      const step = 48;
+      let ticked = false;
+      while (Math.abs(wheelAcc) >= step) {
+        deck.wheel(cell.x, cell.y, wheelAcc < 0);
+        wheelAcc += wheelAcc < 0 ? step : -step;
+        ticked = true;
+      }
+      if (ticked) paint();
+    },
+    { passive: false },
+  );
+
   // Touch: tap or swipe left advances, swipe right goes back — the
   // same linear walk as space/shift-space, so a phone reaches every
   // slide (columns and deeper rows) without a keyboard. Vertical

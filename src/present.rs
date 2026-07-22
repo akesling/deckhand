@@ -150,6 +150,18 @@ impl TerminalProvider for PtyProvider {
         }
     }
 
+    fn wheel(&mut self, id: usize, up: bool, col: u16, row: u16) {
+        if let Some(s) = self.sessions.get_mut(&id) {
+            s.wheel(up, col, row);
+        }
+    }
+
+    fn click(&mut self, id: usize, col: u16, row: u16) -> bool {
+        self.sessions
+            .get_mut(&id)
+            .is_some_and(|s| s.click(col, row))
+    }
+
     fn restart(&mut self, ids: &[usize]) {
         for id in ids {
             if let Some(mut s) = self.sessions.remove(id) {
