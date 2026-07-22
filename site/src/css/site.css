@@ -320,6 +320,7 @@ code, pre, kbd, .terminal-frame { font-family: inherit; }
 
 .terminal-frame {
   background: var(--surface-terminal);
+  position: relative; /* anchors .fullscreen-toggle */
   /* Horizontal gestures belong to the deck (swipe/tap navigation in
      ts/mount.ts); vertical ones keep scrolling the page. */
   touch-action: pan-y;
@@ -336,6 +337,27 @@ code, pre, kbd, .terminal-frame { font-family: inherit; }
    counted as usable rows/cols, and the screen overflows the frame by
    a row and change — a clipped status bar and stray scrollbars. */
 .terminal-frame .xterm { height: 100%; padding: .75rem; }
+/* Our fixed height wins over the UA's fullscreen sizing — override it. */
+.terminal-frame:fullscreen { height: 100%; }
+.fullscreen-toggle {
+  position: absolute;
+  top: .35rem;
+  right: .35rem;
+  z-index: 2;
+  background: transparent;
+  border: none;
+  color: var(--gray-500);
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: .15rem .3rem;
+  cursor: pointer;
+}
+.fullscreen-toggle:hover {
+  color: var(--fg-strong);
+  background: var(--surface);
+}
+
 /* xterm.css gives the viewport a scroll gutter even at scrollback: 0.
    The presenter is a fixed screen, never a scrolling log — without
    this, the fractional row left over from the fixed frame height

@@ -79,10 +79,43 @@ export function mountDeck(
   term.write("\x1b[?25l"); // the presenter has no cursor
   paint();
 
+  // Fullscreen: a corner button (or the f key) fullscreens the frame;
+  // the resize observer refits the grid on the way in and out, and Esc
+  // exits via the browser. Skipped where the API is missing (iPhones).
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement === el) {
+      void document.exitFullscreen();
+    } else {
+      void el.requestFullscreen().then(() => {
+        // Focus so keys work immediately — except on touch-primary
+        // devices, where focusing would summon the platform keyboard.
+        if (!window.matchMedia("(pointer: coarse)").matches) term.focus();
+      });
+    }
+  };
+  if (document.fullscreenEnabled) {
+    const btn = document.createElement("button");
+    btn.className = "fullscreen-toggle";
+    btn.title = "fullscreen (f)";
+    btn.setAttribute("aria-label", "toggle fullscreen");
+    btn.textContent = "⛶";
+    // Keep the click from bubbling into focus-on-click handlers.
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleFullscreen();
+    });
+    el.appendChild(btn);
+  }
+
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== "keydown") return false;
     // Leave browser shortcuts (cmd/ctrl combos) alone.
     if (ev.metaKey || ev.ctrlKey) return true;
+    if (ev.key === "f" && document.fullscreenEnabled) {
+      toggleFullscreen();
+      ev.preventDefault();
+      return false;
+    }
     deck.key(ev.key, ev.ctrlKey, ev.shiftKey);
     paint();
     ev.preventDefault();
@@ -107,6 +140,8 @@ export function mountDeck(
   );
   el.addEventListener("touchend", (ev) => {
     if (!touchStart) return;
+    // Taps on the fullscreen button are the button's, not navigation.
+    if (ev.target instanceof Element && ev.target.closest(".fullscreen-toggle")) return;
     const t = ev.changedTouches[0];
     const dx = t.clientX - touchStart.x;
     const dy = t.clientY - touchStart.y;
