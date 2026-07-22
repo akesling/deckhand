@@ -97,12 +97,23 @@ type a code to teleport; this is how you field
 
 # qr codes
 
+````row
 ```qr
 https://en.wikipedia.org/wiki/QR_code
 ```
 
-a ```` ```qr ```` fence renders any URL or text — scan this one right
-off the screen; it explains itself
+*what these are*
+||
+```qr
+https://deckhand.sh
+```
+
+*this very site*
+````
+
+a ```` ```qr ```` fence renders any URL or text, scannable right off
+the screen — and a ```` ````row ```` fence lays any blocks out
+side-by-side, cells split by `||`
 
 ---
 

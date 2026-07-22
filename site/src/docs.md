@@ -108,6 +108,31 @@ PNG, JPEG, GIF, and WebP. Images referenced mid-sentence stay inline
 text, and the browser presenter shows a placeholder — pixels need a
 filesystem.
 
+### Side-by-side layout
+
+A fenced block whose info string is `row` lays its cells out
+side-by-side, splitting the slide width equally; `||` on its own line
+separates cells. A cell stacks anything a slide can hold — markdown,
+code blocks, terminals, QR codes, images — except another row. Make
+the outer fence longer than any fence inside the cells:
+
+`````markdown
+````row
+```qr
+https://deckhand.sh
+```
+||
+```terminal rows=10
+python3 -q
+```
+````
+`````
+
+Cells are top-aligned and the row is as tall as its tallest cell.
+`rows=fill` terminals inside a row fall back to their fixed height
+(default 12) — "the rest of the slide" isn't a height a side-by-side
+cell can claim.
+
 ### Per-slide themes
 
 A `theme` fence anywhere on a slide overrides the theme for that slide

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 
-use crate::deck::{Deck, Segment, TermSnapshot};
+use crate::deck::{Deck, TermSnapshot};
 use crate::term::TermSession;
 
 /// Capture settings for [`capture`].
@@ -53,42 +53,34 @@ pub fn capture(deck: &mut Deck, deck_dir: &Path, opts: &Options) -> Result<()> {
         None => deck_dir.to_path_buf(),
     };
     let cwd = cwd.as_path();
-    for column in &mut deck.columns {
-        for slide in &mut column.slides {
-            for seg in &mut slide.segments {
-                let Segment::Terminal(block) = seg else {
-                    continue;
-                };
-                let label = block.command.as_deref().unwrap_or("shell");
-                eprintln!("snapshotting terminal {}: {label}", block.id + 1);
-                let rows = if block.fill {
-                    FILL_CAPTURE_ROWS
-                } else {
-                    block.rows
-                };
-                // A block that won't spawn shouldn't sink the compile —
-                // it just keeps presenting as a placeholder.
-                let mut session =
-                    match TermSession::spawn(block.command.as_deref(), rows, opts.cols, cwd) {
-                        Ok(session) => session,
-                        Err(e) => {
-                            eprintln!("warning: couldn't snapshot {label:?}: {e:#}");
-                            continue;
-                        }
-                    };
-                std::thread::sleep(opts.wait);
-                let data = {
-                    let parser = session.parser.lock().unwrap();
-                    parser.screen().contents_formatted()
-                };
-                session.kill();
-                block.snapshot = Some(TermSnapshot {
-                    cols: opts.cols,
-                    rows,
-                    data,
-                });
+    for block in deck.terminals_mut() {
+        let label = block.command.as_deref().unwrap_or("shell");
+        eprintln!("snapshotting terminal {}: {label}", block.id + 1);
+        let rows = if block.fill {
+            FILL_CAPTURE_ROWS
+        } else {
+            block.rows
+        };
+        // A block that won't spawn shouldn't sink the compile —
+        // it just keeps presenting as a placeholder.
+        let mut session = match TermSession::spawn(block.command.as_deref(), rows, opts.cols, cwd) {
+            Ok(session) => session,
+            Err(e) => {
+                eprintln!("warning: couldn't snapshot {label:?}: {e:#}");
+                continue;
             }
-        }
+        };
+        std::thread::sleep(opts.wait);
+        let data = {
+            let parser = session.parser.lock().unwrap();
+            parser.screen().contents_formatted()
+        };
+        session.kill();
+        block.snapshot = Some(TermSnapshot {
+            cols: opts.cols,
+            rows,
+            data,
+        });
     }
     Ok(())
 }
@@ -96,6 +88,7 @@ pub fn capture(deck: &mut Deck, deck_dir: &Path, opts: &Options) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::deck::Segment;
 
     /// Spawns a real PTY; run explicitly with `cargo test -- --ignored`.
     #[test]

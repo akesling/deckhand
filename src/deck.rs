@@ -21,6 +21,21 @@
 //!   scannable QR code, and a markdown image alone on a line
 //!   (`![alt](diagram.png)`) renders as colored ASCII art when
 //!   presenting natively.
+//!
+//!   A fenced block whose info string is `row` lays its cells out
+//!   side-by-side; `||` on its own line separates cells. Cells hold
+//!   anything a slide holds except another row — use a longer outer
+//!   fence (` ````row `) when cells contain fenced blocks:
+//!
+//! `````text
+//! ````row
+//! ```qr
+//! https://deckhand.sh
+//! ```
+//! ||
+//! markdown, code blocks, terminals…
+//! ````
+//! `````
 
 use std::path::Path;
 
@@ -73,6 +88,9 @@ pub enum Segment {
     Qr(QrBlock),
     /// An image referenced from the markdown, drawn as ASCII art.
     Image(ImageBlock),
+    /// Side-by-side cells from a ```` ```row ```` fence, each a stack
+    /// of segments (rows can't nest). Cells share the width equally.
+    Row(Vec<Vec<Segment>>),
 }
 
 /// A QR code block: the payload plus its pre-encoded unicode rows
@@ -144,7 +162,7 @@ impl Deck {
         self.columns
             .iter()
             .flat_map(|c| &c.slides)
-            .flat_map(|s| &s.segments)
+            .flat_map(|s| s.leaf_segments())
             .filter_map(|seg| match seg {
                 Segment::Terminal(b) => Some(
                     b.command
@@ -158,24 +176,57 @@ impl Deck {
             .collect()
     }
 
+    /// Every terminal block in the deck, in deck order, rows included.
+    pub fn terminals_mut(&mut self) -> Vec<&mut TermBlock> {
+        fn walk<'s>(segments: &'s mut [Segment], out: &mut Vec<&'s mut TermBlock>) {
+            for seg in segments {
+                match seg {
+                    Segment::Terminal(b) => out.push(b),
+                    Segment::Row(cells) => {
+                        for cell in cells {
+                            walk(cell, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for column in &mut self.columns {
+            for slide in &mut column.slides {
+                walk(&mut slide.segments, &mut out);
+            }
+        }
+        out
+    }
+
     /// Load pixels for every image segment, resolving relative paths
     /// against `base` (the deck's directory). Failures don't abort the
     /// deck — the slide shows the alt text and the error instead, the
     /// same honesty rule terminals follow on the web.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn resolve_images(&mut self, base: &Path) {
-        for column in &mut self.columns {
-            for slide in &mut column.slides {
-                for seg in &mut slide.segments {
-                    if let Segment::Image(img) = seg
-                        && img.data.is_none()
-                    {
+        fn walk(segments: &mut [Segment], base: &Path) {
+            for seg in segments {
+                match seg {
+                    Segment::Image(img) if img.data.is_none() => {
                         match crate::ascii_image::load(&base.join(&img.path)) {
                             Ok(data) => img.data = Some(data),
                             Err(e) => img.error = Some(format!("{e:#}")),
                         }
                     }
+                    Segment::Row(cells) => {
+                        for cell in cells {
+                            walk(cell, base);
+                        }
+                    }
+                    _ => {}
                 }
+            }
+        }
+        for column in &mut self.columns {
+            for slide in &mut column.slides {
+                walk(&mut slide.segments, base);
             }
         }
     }
@@ -194,15 +245,26 @@ impl Deck {
 }
 
 impl Slide {
-    /// Ids of this slide's terminal blocks, in slide order.
+    /// Ids of this slide's terminal blocks, in slide order (row cells
+    /// left to right).
     pub fn term_ids(&self) -> Vec<usize> {
-        self.segments
-            .iter()
+        self.leaf_segments()
             .filter_map(|s| match s {
                 Segment::Terminal(b) => Some(b.id),
                 _ => None,
             })
             .collect()
+    }
+
+    /// This slide's segments with row cells flattened in, left to
+    /// right — for walkers that care about content, not layout.
+    pub fn leaf_segments(&self) -> impl Iterator<Item = &Segment> {
+        self.segments.iter().flat_map(|seg| match seg {
+            Segment::Row(cells) => {
+                Box::new(cells.iter().flatten()) as Box<dyn Iterator<Item = &Segment>>
+            }
+            other => Box::new(std::iter::once(other)),
+        })
     }
 }
 
@@ -432,11 +494,75 @@ pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) 
 }
 
 /// A special fence being collected: a `terminal` block's body, a
-/// `theme` block's YAML, or a `qr` block's payload.
+/// `theme` block's YAML, a `qr` block's payload, or a `row` block's
+/// cells.
 enum Pending {
     Term(TermBlock, String),
     Theme(String),
     Qr(String),
+    Row(String),
+}
+
+/// Split a `row` fence body into cell sources at bare `||` lines,
+/// respecting inner code fences.
+fn split_cells(body: &str) -> Vec<String> {
+    let mut cells = vec![String::new()];
+    let mut fence: Fence = None;
+    for line in body.lines() {
+        let t = line.trim();
+        match fence {
+            Some((ch, n)) => {
+                if closes_fence(t, ch, n) {
+                    fence = None;
+                }
+            }
+            None => {
+                if let Some(f) = opens_fence(t) {
+                    fence = Some(f);
+                } else if t.len() >= 2 && t.chars().all(|c| c == '|') {
+                    cells.push(String::new());
+                    continue;
+                }
+            }
+        }
+        let cell = cells.last_mut().expect("starts non-empty");
+        cell.push_str(line);
+        cell.push('\n');
+    }
+    cells
+}
+
+/// Parse a `row` fence body: each cell parses like slide content
+/// (rows can't nest); cell `theme` fences merge into the slide theme.
+fn parse_row(
+    body: &str,
+    next_term_id: &mut usize,
+) -> Result<(Vec<Vec<Segment>>, Option<ThemeConfig>)> {
+    let mut cells = Vec::new();
+    let mut theme: Option<ThemeConfig> = None;
+    for cell_src in split_cells(body) {
+        if cell_src.trim().is_empty() {
+            continue;
+        }
+        let (segments, cell_theme) =
+            parse_segments_at(&cell_src, next_term_id, false).context("in `row` fence cell")?;
+        if let Some(cfg) = cell_theme {
+            theme = Some(match theme.take() {
+                Some(prev) => prev.merged(cfg),
+                None => cfg,
+            });
+        }
+        if !segments.is_empty() {
+            cells.push(segments);
+        }
+    }
+    if cells.len() < 2 {
+        anyhow::bail!(
+            "a `row` fence needs at least two non-empty cells separated by a `||` line \
+             (and an outer fence longer than any fence inside the cells, e.g. ````row)"
+        );
+    }
+    Ok((cells, theme))
 }
 
 /// `![alt](path)` alone on a line (optionally with a `"title"` after
@@ -459,6 +585,16 @@ fn image_line(t: &str) -> Option<(String, String)> {
 fn parse_segments(
     body: &str,
     next_term_id: &mut usize,
+) -> Result<(Vec<Segment>, Option<ThemeConfig>)> {
+    parse_segments_at(body, next_term_id, true)
+}
+
+/// The recursive worker behind [`parse_segments`]: row cells re-enter
+/// here with `allow_rows` off, which is what keeps rows one level deep.
+fn parse_segments_at(
+    body: &str,
+    next_term_id: &mut usize,
+    allow_rows: bool,
 ) -> Result<(Vec<Segment>, Option<ThemeConfig>)> {
     let mut segments = Vec::new();
     let mut theme: Option<ThemeConfig> = None;
@@ -542,13 +678,27 @@ fn parse_segments(
                         flush_md(&mut md, &mut segments);
                         segments.push(Segment::Qr(finish_qr(&qbody)?));
                     }
+                    Some(Pending::Row(rbody)) => {
+                        let (cells, row_theme) = parse_row(&rbody, next_term_id)?;
+                        if let Some(cfg) = row_theme {
+                            theme = Some(match theme.take() {
+                                Some(prev) => prev.merged(cfg),
+                                None => cfg,
+                            });
+                        }
+                        flush_md(&mut md, &mut segments);
+                        segments.push(Segment::Row(cells));
+                    }
                     None => {
                         md.push_str(line);
                         md.push('\n');
                     }
                 }
             } else if let Some(
-                Pending::Term(_, tbody) | Pending::Theme(tbody) | Pending::Qr(tbody),
+                Pending::Term(_, tbody)
+                | Pending::Theme(tbody)
+                | Pending::Qr(tbody)
+                | Pending::Row(tbody),
             ) = pending.as_mut()
             {
                 tbody.push_str(line);
@@ -591,6 +741,8 @@ fn parse_segments(
                 }
                 Some("theme") => pending = Some(Pending::Theme(String::new())),
                 Some("qr") => pending = Some(Pending::Qr(String::new())),
+                Some("row") if allow_rows => pending = Some(Pending::Row(String::new())),
+                Some("row") => anyhow::bail!("`row` fences can't nest"),
                 _ => {
                     md.push_str(line);
                     md.push('\n');
@@ -622,6 +774,17 @@ fn parse_segments(
         Some(Pending::Qr(qbody)) => {
             flush_md(&mut md, &mut segments);
             segments.push(Segment::Qr(finish_qr(&qbody)?));
+        }
+        Some(Pending::Row(rbody)) => {
+            let (cells, row_theme) = parse_row(&rbody, next_term_id)?;
+            if let Some(cfg) = row_theme {
+                theme = Some(match theme.take() {
+                    Some(prev) => prev.merged(cfg),
+                    None => cfg,
+                });
+            }
+            flush_md(&mut md, &mut segments);
+            segments.push(Segment::Row(cells));
         }
         None => {}
     }
@@ -882,6 +1045,60 @@ mod tests {
                 assert!(img.error.as_deref().unwrap().contains("does-not-exist"));
             }
             _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn row_fence_splits_cells() {
+        let src = "# a\n````row\nleft *md*\n||\n```qr\nhi\n```\n||\nright\n````\nafter\n";
+        let deck = parse(src, "t").unwrap();
+        let slide = deck.slide(0, 0);
+        assert_eq!(slide.segments.len(), 3);
+        match &slide.segments[1] {
+            Segment::Row(cells) => {
+                assert_eq!(cells.len(), 3);
+                assert!(matches!(cells[0][0], Segment::Markdown(_)));
+                assert!(matches!(cells[1][0], Segment::Qr(_)));
+                assert!(matches!(cells[2][0], Segment::Markdown(_)));
+            }
+            other => panic!("expected row, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn row_cells_hold_terminals_with_global_ids() {
+        let src = "```terminal\n```\n````row\n```terminal\nhtop\n```\n||\ntext\n````\n";
+        let deck = parse(src, "t").unwrap();
+        assert_eq!(deck.slide(0, 0).term_ids(), vec![0, 1]);
+        assert_eq!(deck.terminal_commands(), vec!["shell", "htop"]);
+    }
+
+    #[test]
+    fn row_needs_two_cells() {
+        let err = parse("```row\nonly one cell\n```\n", "t").unwrap_err();
+        assert!(format!("{err:#}").contains("two"));
+    }
+
+    #[test]
+    fn rows_cannot_nest() {
+        let src = "`````row\n````row\na\n||\nb\n````\n||\nc\n`````\n";
+        let err = parse(src, "t").unwrap_err();
+        assert!(format!("{err:#}").contains("nest"));
+    }
+
+    #[test]
+    fn pipes_inside_cell_code_fences_stay_content() {
+        let src = "````row\n```\n||\n```\n||\nright\n````\n";
+        let deck = parse(src, "t").unwrap();
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Row(cells) => {
+                assert_eq!(cells.len(), 2);
+                match &cells[0][0] {
+                    Segment::Markdown(md) => assert!(md.contains("||")),
+                    _ => panic!(),
+                }
+            }
+            _ => panic!("expected row"),
         }
     }
 

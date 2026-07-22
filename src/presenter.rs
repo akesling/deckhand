@@ -257,12 +257,60 @@ fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
     deck.columns
         .iter()
         .flat_map(|c| &c.slides)
-        .flat_map(|s| &s.segments)
+        .flat_map(|s| s.leaf_segments())
         .filter_map(|seg| match seg {
             Segment::Terminal(b) => Some(b),
             _ => None,
         })
         .collect()
+}
+
+/// Columns of blank space between row cells.
+const ROW_GAP: u16 = 2;
+
+/// One fixed-height piece of a row cell (or a full-width segment —
+/// the same builder serves both).
+enum CellItem {
+    Text(Text<'static>),
+    Term(TermBlock),
+}
+
+/// Render segments into fixed-height items at `w` columns. Inside
+/// cells, fill terminals fall back to their fixed row count — "the
+/// rest of the slide" isn't a height a side-by-side cell can claim.
+fn build_cell_items(
+    segments: &[Segment],
+    w: u16,
+    box_h: u16,
+    theme: &Theme,
+) -> Vec<(u16, CellItem)> {
+    let mut items = Vec::new();
+    for seg in segments {
+        match seg {
+            Segment::Markdown(src) => {
+                let text = markdown::render(src, w, theme);
+                let h = text.height() as u16;
+                if h > 0 {
+                    items.push((h, CellItem::Text(text)));
+                }
+            }
+            Segment::Terminal(b) => items.push((b.rows + 2, CellItem::Term(b.clone()))),
+            Segment::Qr(q) => {
+                let text = qr_text(q, w, theme);
+                items.push((text.height() as u16, CellItem::Text(text)));
+            }
+            Segment::Image(img) => {
+                let text = match &img.data {
+                    Some(data) => crate::ascii_image::render(data, w, box_h),
+                    None => image_placeholder(img, theme),
+                };
+                items.push((text.height() as u16, CellItem::Text(text)));
+            }
+            // The parser keeps rows one level deep.
+            Segment::Row(_) => {}
+        }
+    }
+    items
 }
 
 /// A QR block as centered lines, colored by the theme's
@@ -565,7 +613,7 @@ impl<P: TerminalProvider> Presenter<P> {
     fn block_by_id(&self, id: usize) -> TermBlock {
         for column in &self.deck.columns {
             for slide in &column.slides {
-                for seg in &slide.segments {
+                for seg in slide.leaf_segments() {
                     if let Segment::Terminal(b) = seg
                         && b.id == id
                     {
@@ -866,32 +914,48 @@ impl<P: TerminalProvider> Presenter<P> {
         enum RenderItem {
             Text(Text<'static>),
             Term(TermBlock),
+            /// Side-by-side cells, each a fixed-height stack.
+            Row(Vec<Vec<(u16, CellItem)>>, u16),
         }
         let box_h = area.height.min(theme.max_height);
         let mut items: Vec<(Option<u16>, RenderItem)> = Vec::new();
         for seg in &self.deck.slide(self.col, self.row).segments {
             match seg {
-                Segment::Markdown(src) => {
-                    let text = markdown::render(src, w, &theme);
-                    let h = text.height() as u16;
-                    if h > 0 {
-                        items.push((Some(h), RenderItem::Text(text)));
+                // Fill sizing only exists at the top level; everything
+                // else routes through the shared cell builder.
+                Segment::Terminal(b) if b.fill => {
+                    items.push((None, RenderItem::Term(b.clone())));
+                }
+                Segment::Row(cells) => {
+                    let n = cells.len().max(1) as u16;
+                    let cw = (w.saturating_sub(ROW_GAP * (n - 1)) / n).max(10);
+                    let built: Vec<Vec<(u16, CellItem)>> = cells
+                        .iter()
+                        .map(|cell| build_cell_items(cell, cw, box_h, &theme))
+                        .collect();
+                    let height = built
+                        .iter()
+                        .map(|cell| {
+                            cell.iter()
+                                .map(|(h, _)| h + 1)
+                                .sum::<u16>()
+                                .saturating_sub(1)
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    if height > 0 {
+                        items.push((Some(height), RenderItem::Row(built, cw)));
                     }
                 }
-                Segment::Terminal(b) => {
-                    let h = if b.fill { None } else { Some(b.rows + 2) };
-                    items.push((h, RenderItem::Term(b.clone())));
-                }
-                Segment::Qr(q) => {
-                    let text = qr_text(q, w, &theme);
-                    items.push((Some(text.height() as u16), RenderItem::Text(text)));
-                }
-                Segment::Image(img) => {
-                    let text = match &img.data {
-                        Some(data) => crate::ascii_image::render(data, w, box_h),
-                        None => image_placeholder(img, &theme),
-                    };
-                    items.push((Some(text.height() as u16), RenderItem::Text(text)));
+                other => {
+                    for (h, item) in build_cell_items(std::slice::from_ref(other), w, box_h, &theme)
+                    {
+                        let item = match item {
+                            CellItem::Text(t) => RenderItem::Text(t),
+                            CellItem::Term(b) => RenderItem::Term(b),
+                        };
+                        items.push((Some(h), item));
+                    }
                 }
             }
         }
@@ -937,6 +1001,39 @@ impl<P: TerminalProvider> Presenter<P> {
                     );
                     self.term_rects.push((block.id, rect));
                     self.draw_term(rect, &block, &theme, buf);
+                }
+                RenderItem::Row(cells, cw) => {
+                    let mut cx = rect.x;
+                    for cell in cells {
+                        let mut cy = rect.y;
+                        let cell_bottom = rect.y + rect.height;
+                        for (ih, item) in cell {
+                            if cy >= cell_bottom {
+                                break;
+                            }
+                            let ih = ih.min(cell_bottom - cy);
+                            let r = Rect {
+                                x: cx,
+                                y: cy,
+                                width: cw,
+                                height: ih,
+                            };
+                            match item {
+                                CellItem::Text(text) => Paragraph::new(text).render(r, buf),
+                                CellItem::Term(block) => {
+                                    self.provider.prepare(
+                                        &block,
+                                        cw.saturating_sub(2).max(4),
+                                        ih.saturating_sub(2).max(1),
+                                    );
+                                    self.term_rects.push((block.id, r));
+                                    self.draw_term(r, &block, &theme, buf);
+                                }
+                            }
+                            cy += ih + 1;
+                        }
+                        cx += cw + ROW_GAP;
+                    }
                 }
             }
             y += h + 1;
@@ -1349,6 +1446,47 @@ mod tests {
             .flat_map(|y| (0..area.width).map(move |x| (x, y)))
             .any(|pos| buf[pos].fg == Color::Red && buf[pos].bg == Color::White);
         assert!(themed, "qr_dark/qr_light overrides not applied");
+    }
+
+    #[test]
+    fn row_draws_cells_side_by_side() {
+        let deck =
+            crate::deck::parse("````row\n```qr\nhi\n```\n||\n```qr\nhi\n```\n````\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 80, 30);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        // Two QR codes on the same line: white-bg cells in both the
+        // left and right halves of some row.
+        let qr_cols: Vec<u16> = (0..area.width)
+            .filter(|&x| (0..area.height).any(|y| buf[(x, y)].bg == Color::Indexed(231)))
+            .collect();
+        assert!(!qr_cols.is_empty(), "no QR cells drawn");
+        assert!(
+            qr_cols.iter().any(|&x| x < 40) && qr_cols.iter().any(|&x| x >= 40),
+            "QR cells all on one side: {qr_cols:?}"
+        );
+    }
+
+    #[test]
+    fn row_terminals_are_focusable_and_hit_testable() {
+        let deck = crate::deck::parse(
+            "````row\n```terminal\n```\n||\n```terminal\n```\n````\n",
+            "t",
+        )
+        .unwrap();
+        let mut p = Presenter::new(deck, vec![], FakeTerms { resets: 0 }).unwrap();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        assert_eq!(p.term_rects.len(), 2);
+        let (left, right) = (p.term_rects[0].1, p.term_rects[1].1);
+        assert_eq!(left.y, right.y, "cells should share a row");
+        assert!(left.x + left.width <= right.x, "cells should not overlap");
+        // Focus cycles across both cells.
+        p.on_key(KeyPress::plain(Key::Char('t')));
+        p.on_key(KeyPress::plain(Key::Char('y')));
+        assert_eq!(p.focus, Some(0));
     }
 
     #[test]

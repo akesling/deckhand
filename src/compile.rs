@@ -115,44 +115,7 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
                 out.push_str(&serde_yaml::to_string(theme).context("serializing slide theme")?);
                 out.push_str("```\n\n");
             }
-            for seg in &slide.segments {
-                match seg {
-                    Segment::Markdown(src) => {
-                        out.push_str(&sanitize(src.trim_matches('\n'), &mut rewrites));
-                        out.push_str("\n\n");
-                    }
-                    Segment::Terminal(block) => {
-                        let rows = if block.fill {
-                            "fill".to_string()
-                        } else {
-                            block.rows.to_string()
-                        };
-                        out.push_str(&format!("```terminal rows={rows}\n"));
-                        if let Some(cmd) = &block.command {
-                            out.push_str(cmd);
-                            out.push('\n');
-                        }
-                        if let Some(snap) = &block.snapshot {
-                            use base64::Engine as _;
-                            out.push_str(&format!("%%snapshot {}x{}\n", snap.cols, snap.rows));
-                            let b64 = base64::engine::general_purpose::STANDARD.encode(&snap.data);
-                            for chunk in b64.as_bytes().chunks(76) {
-                                out.push_str(std::str::from_utf8(chunk).expect("base64 is ascii"));
-                                out.push('\n');
-                            }
-                        }
-                        out.push_str("```\n\n");
-                    }
-                    Segment::Qr(q) => {
-                        out.push_str("```qr\n");
-                        out.push_str(&q.data);
-                        out.push_str("\n```\n\n");
-                    }
-                    Segment::Image(img) => {
-                        out.push_str(&format!("![{}]({})\n\n", img.alt, img.path));
-                    }
-                }
-            }
+            out.push_str(&emit_segments(&slide.segments, &mut rewrites));
             if !slide.notes.is_empty() {
                 out.push_str("???\n\n");
                 out.push_str(&sanitize(slide.notes.trim(), &mut rewrites));
@@ -161,6 +124,73 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
         }
     }
     Ok((out, rewrites))
+}
+
+/// Emit segments as single-file markdown; row cells recurse (one
+/// level, matching the parser).
+fn emit_segments(segments: &[Segment], rewrites: &mut usize) -> String {
+    let mut out = String::new();
+    for seg in segments {
+        match seg {
+            Segment::Markdown(src) => {
+                out.push_str(&sanitize(src.trim_matches('\n'), rewrites));
+                out.push_str("\n\n");
+            }
+            Segment::Terminal(block) => {
+                let rows = if block.fill {
+                    "fill".to_string()
+                } else {
+                    block.rows.to_string()
+                };
+                out.push_str(&format!("```terminal rows={rows}\n"));
+                if let Some(cmd) = &block.command {
+                    out.push_str(cmd);
+                    out.push('\n');
+                }
+                if let Some(snap) = &block.snapshot {
+                    use base64::Engine as _;
+                    out.push_str(&format!("%%snapshot {}x{}\n", snap.cols, snap.rows));
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&snap.data);
+                    for chunk in b64.as_bytes().chunks(76) {
+                        out.push_str(std::str::from_utf8(chunk).expect("base64 is ascii"));
+                        out.push('\n');
+                    }
+                }
+                out.push_str("```\n\n");
+            }
+            Segment::Qr(q) => {
+                out.push_str("```qr\n");
+                out.push_str(&q.data);
+                out.push_str("\n```\n\n");
+            }
+            Segment::Image(img) => {
+                out.push_str(&format!("![{}]({})\n\n", img.alt, img.path));
+            }
+            Segment::Row(cells) => {
+                let bodies: Vec<String> = cells
+                    .iter()
+                    .map(|cell| emit_segments(cell, rewrites).trim_matches('\n').to_string())
+                    .collect();
+                let body = bodies.join("\n||\n");
+                // The outer fence must outrun any fence in the cells.
+                let ticks = "`".repeat(fence_len(&body));
+                out.push_str(&format!("{ticks}row\n{body}\n{ticks}\n\n"));
+            }
+        }
+    }
+    out
+}
+
+/// A backtick fence long enough to wrap `body` without a cell fence
+/// closing it early: one longer than the longest backtick run opening
+/// any line, and at least three.
+fn fence_len(body: &str) -> usize {
+    body.lines()
+        .map(|l| l.trim_start().chars().take_while(|c| *c == '`').count())
+        .max()
+        .unwrap_or(0)
+        .max(2)
+        + 1
 }
 
 /// Rewrite lines that the single-file parser would read as slide
@@ -262,6 +292,29 @@ mod tests {
                 assert_eq!(img.alt, "diagram");
             }
             other => panic!("unexpected segments: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rows_round_trip() {
+        let src =
+            "````row\n```qr\nhi\n```\n||\n- right *cell*\n\n```terminal rows=5\nls\n```\n````\n";
+        let deck = deck::parse(src, "t").unwrap();
+        let (md, _) = compile(&deck).unwrap();
+        // The emitted fence must outrun the 3-tick fences inside.
+        assert!(md.contains("````row"), "compiled:\n{md}");
+        let reparsed = deck::parse(&md, "t").unwrap();
+        match &reparsed.slide(0, 0).segments[0] {
+            Segment::Row(cells) => {
+                assert_eq!(cells.len(), 2);
+                assert!(matches!(cells[0][0], Segment::Qr(_)));
+                assert_eq!(cells[1].len(), 2);
+                match &cells[1][1] {
+                    Segment::Terminal(b) => assert_eq!(b.rows, 5),
+                    _ => panic!("expected terminal in right cell"),
+                }
+            }
+            other => panic!("expected row, got {other:?}"),
         }
     }
 
