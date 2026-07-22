@@ -34,7 +34,9 @@ const FONT: &[(char, Glyph)] = &[
     ('T', ["###", ".#.", ".#.", ".#.", ".#."]),
     ('U', ["#.#", "#.#", "#.#", "#.#", "###"]),
     ('V', ["#.#", "#.#", "#.#", "#.#", ".#."]),
-    ('W', ["#.#", "#.#", "#.#", "###", "#.#"]),
+    // 5px wide: a W's two valleys don't fit in three columns (a 3px
+    // attempt reads as a smudged M with detached feet).
+    ('W', ["#...#", "#...#", "#.#.#", "#.#.#", ".#.#."]),
     ('X', ["#.#", "#.#", ".#.", "#.#", "#.#"]),
     ('Y', ["#.#", "#.#", ".#.", ".#.", ".#."]),
     ('Z', ["###", "..#", ".#.", "#..", "###"]),
@@ -125,6 +127,14 @@ mod tests {
     #[test]
     fn case_insensitive_same_shape() {
         assert_eq!(render("abc", 96), render("ABC", 96));
+    }
+
+    #[test]
+    fn w_is_a_w() {
+        // Wide glyph, both valleys, no detached feet under a joined
+        // bottom (the failure mode of a 3px-wide W).
+        let rows = render("w", 96).unwrap();
+        assert_eq!(rows, vec!["█   █", "█ █ █", " ▀ ▀ "]);
     }
 
     #[test]
