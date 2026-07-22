@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "build:wasm": "../scripts/build-wasm.sh",
-    "build:ts": "bun build src/ts/demo.ts src/ts/play.ts src/ts/playground.ts --outdir dist/js --target browser --minify",
-    "watch:ts": "bun build src/ts/demo.ts src/ts/play.ts src/ts/playground.ts --outdir dist/js --target browser --watch",
+    "build:ts": "bun build src/ts/demo.ts src/ts/play.ts src/ts/playground.ts src/ts/version.ts --outdir dist/js --target browser --minify",
+    "watch:ts": "bun build src/ts/demo.ts src/ts/play.ts src/ts/playground.ts src/ts/version.ts --outdir dist/js --target browser --watch",
     "build:site": "bunx @11ty/eleventy",
     "build": "bun run build:wasm && bun run build:ts && bun run build:site",
     "dev": "bun run build:ts && bunx @11ty/eleventy --serve",
@@ -16,10 +16,12 @@
     "@11ty/eleventy": "3.1.6",
     "@biomejs/biome": "1.9.4",
     "shellcheck": "4.1.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.113.0"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",
+    "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "5.5.0"
   },
   "trustedDependencies": [

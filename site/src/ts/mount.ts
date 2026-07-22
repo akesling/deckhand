@@ -2,6 +2,7 @@
 
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import init, { WebDeck, bundle_to_markdown } from "../../wasm/deckhand.js";
 
 let wasmReady: Promise<unknown> | null = null;
@@ -57,6 +58,17 @@ export function mountDeck(
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(el);
+  // The WebGL renderer draws block/box glyphs itself (customGlyphs),
+  // edge to edge — the DOM renderer takes them from the font, whose
+  // half-blocks leave hairline seams between rows (visible on the QR
+  // slide). Fall back to the DOM renderer where WebGL is unavailable.
+  try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => webgl.dispose());
+    term.loadAddon(webgl);
+  } catch {
+    // DOM renderer it is.
+  }
   fit.fit();
 
   let deck = makeDeck(term.cols, term.rows);

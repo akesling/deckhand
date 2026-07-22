@@ -1,0 +1,51 @@
+name: Release
+
+# Pushing a v* tag (scripts/release.sh does this) builds the site and
+# deploys it to Cloudflare Pages — production plus a permanent
+# branch-alias deployment for the tag, which is what the footer version
+# picker's versions.json links back to.
+#
+# Needs two repo secrets: CLOUDFLARE_API_TOKEN (Pages:Edit) and
+# CLOUDFLARE_ACCOUNT_ID. crates.io publishing stays local, in
+# scripts/release.sh.
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  site:
+    name: deploy site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # versions.json is generated from the full tag list.
+          fetch-depth: 0
+      - name: install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: cache wasm-bindgen-cli
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          # Version must match Cargo.lock; scripts/build-wasm.sh fails
+          # loudly (with the fix command) if they drift.
+          key: wasm-bindgen-0.2.126-${{ runner.os }}
+      - name: install wasm-bindgen-cli
+        run: command -v wasm-bindgen || cargo install wasm-bindgen-cli --version 0.2.126 --locked
+      - name: install site deps
+        working-directory: site
+        run: bun install --frozen-lockfile
+      - name: build site (wasm + ts + 11ty)
+        run: ./scripts/build-site.sh
+      - name: deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: ./scripts/deploy-site.sh "${GITHUB_REF_NAME}"

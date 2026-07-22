@@ -6,6 +6,7 @@
   <title>{% if title %}{{ title }} · {% endif %}deckhand ⚓</title>
   <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
   <link rel="stylesheet" href="/css/site.css">
+  {% if page.inputPath.endsWith(".md") or page.url == "/" %}<link rel="alternate" type="text/markdown" href="{{ page.url }}index.md">{% endif %}
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
   {% if terminal %}<link rel="stylesheet" href="/css/xterm.css">{% endif %}
 </head>
@@ -31,8 +32,12 @@
   </main>
   <footer>
     <span class="seg">⚓ deckhand</span>
-    <p>a slide deck, in your terminal · MIT licensed</p>
+    <p>a slide deck, in your terminal · MIT licensed · © 2026 Alex Kesling</p>
+    <select id="version-picker" data-version="{{ version }}" aria-label="site version">
+      <option value="">{% if version != "dev" %}v{% endif %}{{ version }}</option>
+    </select>
   </footer>
+  <script type="module" src="/js/version.js"></script>
   {% if script %}<script type="module" src="/js/{{ script }}.js"></script>{% endif %}
 </body>
 </html>

@@ -1,0 +1,13 @@
+---
+permalink: /llms-full.txt
+eleventyExcludeFromCollections: true
+---
+# deckhand — full site documentation
+
+> Every content page on this site, concatenated as markdown. The
+> per-page index is /llms.txt; each section notes its canonical URL.
+{% for p in collections.pages %}
+<!-- source: {{ p.page.url }} -->
+
+{{ p.rawInput | safe }}
+{% endfor %}

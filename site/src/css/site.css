@@ -258,6 +258,15 @@ footer .seg {
 }
 footer a { color: var(--status-fg); }
 footer a:hover { background: var(--status-fg); color: var(--status-bg); }
+footer select {
+  font: inherit;
+  background: var(--surface);
+  color: var(--status-fg);
+  border: 1px solid var(--gray-800);
+  border-radius: 0;
+  padding: .1rem .3rem;
+  margin: .15rem 1rem .15rem auto;
+}
 
 /* ----------------------------------------------------------------- hero */
 
@@ -311,13 +320,23 @@ code, pre, kbd, .terminal-frame { font-family: inherit; }
 
 .terminal-frame {
   background: var(--surface-terminal);
-  padding: .75rem;
   /* Fixed height: the fit addon derives rows from this, so it must not
-     depend on the terminal's own content or fitting loops forever. */
-  height: 26rem;
+     depend on the terminal's own content or fitting loops forever;
+     min() keeps the hero on-screen for short laptop viewports. */
+  height: min(31rem, 72vh);
   overflow: hidden;
 }
-.terminal-frame .xterm { height: 100%; }
+/* The breathing room around the screen must live on .xterm, NOT on the
+   frame: the fit addon measures the frame's full height/width and
+   subtracts only .xterm's own padding. Padding on the frame gets
+   counted as usable rows/cols, and the screen overflows the frame by
+   a row and change — a clipped status bar and stray scrollbars. */
+.terminal-frame .xterm { height: 100%; padding: .75rem; }
+/* xterm.css gives the viewport a scroll gutter even at scrollback: 0.
+   The presenter is a fixed screen, never a scrolling log — without
+   this, the fractional row left over from the fixed frame height
+   surfaces as a scrollbar and a clipped last row. */
+.terminal-frame .xterm .xterm-viewport { overflow-y: hidden; }
 
 .terminal-caption {
   color: var(--fg-muted);

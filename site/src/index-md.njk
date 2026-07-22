@@ -1,0 +1,8 @@
+---
+# The landing page has no markdown source (it's an HTML hero + wasm
+# demo), so its /index.md mirror serves the agent-facing site index
+# instead — the same body as /llms.txt (_includes/llms.md).
+permalink: /index.md
+eleventyExcludeFromCollections: true
+---
+{% include "llms.md" %}

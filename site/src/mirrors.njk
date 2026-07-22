@@ -1,0 +1,12 @@
+---
+# Raw-markdown mirrors for agents: every content page is also served as
+# markdown at <page-url>index.md (e.g. /docs/ → /docs/index.md), linked
+# from /llms.txt and via <link rel="alternate"> in the layout.
+pagination:
+  data: collections.pages
+  size: 1
+  alias: mirror
+permalink: "{{ mirror.page.url }}index.md"
+eleventyExcludeFromCollections: true
+---
+{{ mirror.rawInput | safe }}
