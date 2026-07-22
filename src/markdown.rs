@@ -1,6 +1,8 @@
 //! Markdown → ratatui `Text` renderer with word wrapping.
 
-use pulldown_cmark::{Alignment as MdAlign, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment as MdAlign, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
+};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use unicode_width::UnicodeWidthStr;
@@ -56,6 +58,9 @@ struct Renderer<'t> {
     table: Option<TableAcc>,
     /// Collecting an H1's text for banner rendering (`h1_style: banner`).
     banner: Option<String>,
+    /// Tokenizer for the current fenced code block, when its language
+    /// is one we highlight.
+    code_hl: Option<crate::highlight::Highlighter>,
 }
 
 impl<'t> Renderer<'t> {
@@ -76,6 +81,7 @@ impl<'t> Renderer<'t> {
             suppress_blank: false,
             table: None,
             banner: None,
+            code_hl: None,
         }
     }
 
@@ -289,7 +295,11 @@ impl<'t> Renderer<'t> {
             Tag::CodeBlock(kind) => {
                 self.blank();
                 self.in_code = true;
-                let _ = kind; // no syntax highlighting (yet)
+                let lang = match &kind {
+                    CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or(""),
+                    CodeBlockKind::Indented => "",
+                };
+                self.code_hl = crate::highlight::Highlighter::for_lang(lang);
             }
             Tag::List(start) => {
                 if self.list_stack.is_empty() {
@@ -395,6 +405,7 @@ impl<'t> Renderer<'t> {
             }
             TagEnd::CodeBlock => {
                 self.in_code = false;
+                self.code_hl = None;
             }
             TagEnd::List(_) => {
                 self.flush();
@@ -435,20 +446,40 @@ impl<'t> Renderer<'t> {
 
     fn code_text(&mut self, text: &str) {
         self.flush();
-        let style = Style::default()
+        let base = Style::default()
             .bg(self.theme.code_bg)
             .fg(self.theme.code_fg);
+        let token_style = |kind: crate::highlight::Kind| {
+            use crate::highlight::Kind;
+            match kind {
+                Kind::Plain => base,
+                Kind::Keyword => base.fg(self.theme.code_keyword),
+                Kind::Str => base.fg(self.theme.code_string),
+                Kind::Comment => base
+                    .fg(self.theme.code_comment)
+                    .add_modifier(Modifier::ITALIC),
+                Kind::Literal => base.fg(self.theme.code_literal),
+            }
+        };
         let mut lines: Vec<&str> = text.split('\n').collect();
         if lines.last() == Some(&"") {
             lines.pop();
         }
         for l in lines {
-            let mut content = format!("  {l}");
-            let w = content.width();
-            if w < self.width {
-                content.push_str(&" ".repeat(self.width - w));
+            let mut spans = vec![Span::styled("  ".to_string(), base)];
+            match self.code_hl.as_mut() {
+                Some(hl) => {
+                    for (run, kind) in hl.line(l) {
+                        spans.push(Span::styled(run, token_style(kind)));
+                    }
+                }
+                None => spans.push(Span::styled(l.to_string(), base)),
             }
-            self.lines.push(Line::from(Span::styled(content, style)));
+            let used = 2 + l.width();
+            if used < self.width {
+                spans.push(Span::styled(" ".repeat(self.width - used), base));
+            }
+            self.lines.push(Line::from(spans));
         }
     }
 
@@ -586,6 +617,36 @@ mod tests {
         let text = r("- one\n- two\n", 40);
         assert_eq!(text.height(), 2);
         assert!(format!("{:?}", text.lines[0]).contains('•'));
+    }
+
+    #[test]
+    fn code_blocks_highlight_known_languages() {
+        let theme = Theme::default();
+        let text = render("```rust\nlet x = 42; // hi\n```", 40, &theme);
+        let line = &text.lines[0];
+        let fg_of = |needle: &str| {
+            line.spans
+                .iter()
+                .find(|s| s.content.contains(needle))
+                .map(|s| s.style.fg)
+                .unwrap_or_else(|| panic!("no span containing {needle:?}: {line:?}"))
+        };
+        assert_eq!(fg_of("let"), Some(theme.code_keyword));
+        assert_eq!(fg_of("42"), Some(theme.code_literal));
+        assert_eq!(fg_of("// hi"), Some(theme.code_comment));
+        assert_eq!(fg_of("x"), Some(theme.code_fg));
+        // Background covers the full width, tokens included.
+        assert!(line.spans.iter().all(|s| s.style.bg == Some(theme.code_bg)));
+        assert_eq!(line.width(), 40);
+    }
+
+    #[test]
+    fn unknown_language_code_stays_plain() {
+        let theme = Theme::default();
+        let text = render("```mystery\nlet x = 1\n```", 40, &theme);
+        for span in &text.lines[0].spans {
+            assert_eq!(span.style.fg, Some(theme.code_fg));
+        }
     }
 
     #[test]

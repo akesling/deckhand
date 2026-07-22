@@ -69,6 +69,7 @@
 //! | [`deck`] | deck model + single-file markdown parsing |
 //! | [`config`] | JSON manifest loading |
 //! | [`markdown`] | markdown → styled ratatui text |
+//! | [`highlight`] | lightweight code-block syntax highlighting |
 //! | [`theme`] | theming: layout, borders, colors, precedence |
 //! | [`qr`] | ```` ```qr ```` fences → scannable unicode QR codes |
 //! | [`ascii_image`] | markdown images → colored ASCII art |
@@ -127,6 +128,7 @@ pub mod banner;
 pub mod compile;
 pub mod config;
 pub mod deck;
+pub mod highlight;
 pub mod hints;
 pub mod markdown;
 pub mod presenter;

@@ -122,6 +122,16 @@ python3 -q
 - Once a terminal has history, a scrollbar appears on its right border —
   thumb sized to viewport-vs-history, accent-colored while focused.
 
+### Syntax highlighting
+
+Fenced code blocks with a language tag get lightweight highlighting —
+keywords, strings, comments, numbers — for rust, python,
+javascript/typescript, go, c/c++, sh, json, yaml, toml, and sql;
+unknown languages render plain. It's a small built-in tokenizer (no
+grammar engine), so it works identically in the browser presenter and
+keeps the wasm bundle small. Colors are the theme's `code_keyword`,
+`code_string`, `code_comment`, and `code_literal`.
+
 ### QR codes
 
 A fenced block whose info string is `qr` renders its body — a URL, some
@@ -369,6 +379,10 @@ by field (each later one wins):
   "inline_code": "yellow",
   "code_bg": 235,
   "code_fg": 252,
+  "code_keyword": "magenta",
+  "code_string": "green",
+  "code_comment": 244,
+  "code_literal": "yellow",
   "qr_dark": "#102040",
   "qr_light": "#fdf6e3"
 }

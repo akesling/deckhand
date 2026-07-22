@@ -80,6 +80,16 @@ python3 -q
 - multiple terminal blocks on one slide stack vertically; fill-height
   ones split the leftover space evenly
 
+### Syntax highlighting
+
+Fenced code blocks with a language tag get lightweight highlighting —
+keywords, strings, comments, numbers — for rust, python,
+javascript/typescript, go, c/c++, sh, json, yaml, toml, and sql.
+Unknown languages render plain. Colors come from the theme
+(`code_keyword`, `code_string`, `code_comment`, `code_literal`); it's
+a small built-in tokenizer, not a grammar engine, so the wasm
+presenter stays light and the browser gets the same colors.
+
 ### QR codes
 
 A fenced block whose info string is `qr` renders its body — a URL, some
@@ -227,6 +237,10 @@ All fields, all optional:
   "inline_code": "yellow",
   "code_bg": 235,
   "code_fg": 252,
+  "code_keyword": "magenta",
+  "code_string": "green",
+  "code_comment": 244,
+  "code_literal": "yellow",
   "qr_dark": "#102040",
   "qr_light": "#fdf6e3"
 }
@@ -389,7 +403,6 @@ recording.
 
 ## Limitations
 
-- no syntax highlighting in code blocks (yet)
 - slides taller than the window are clipped, not scrolled
 - images render as ASCII art, and only when presenting natively — the
   browser presenter shows a placeholder

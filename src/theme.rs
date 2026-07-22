@@ -140,6 +140,18 @@ pub struct ThemeConfig {
     /// Code block text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_fg: Option<ColorSpec>,
+    /// Syntax highlighting: keywords.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_keyword: Option<ColorSpec>,
+    /// Syntax highlighting: strings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_string: Option<ColorSpec>,
+    /// Syntax highlighting: comments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_comment: Option<ColorSpec>,
+    /// Syntax highlighting: numbers and named constants.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_literal: Option<ColorSpec>,
     /// QR code modules (default true black). Keep it darker than
     /// `qr_light` and high-contrast, or scanners will give up; light
     /// codes on dark backgrounds fail on many readers.
@@ -179,6 +191,10 @@ impl ThemeConfig {
             inline_code: over.inline_code.or(self.inline_code),
             code_bg: over.code_bg.or(self.code_bg),
             code_fg: over.code_fg.or(self.code_fg),
+            code_keyword: over.code_keyword.or(self.code_keyword),
+            code_string: over.code_string.or(self.code_string),
+            code_comment: over.code_comment.or(self.code_comment),
+            code_literal: over.code_literal.or(self.code_literal),
             qr_dark: over.qr_dark.or(self.qr_dark),
             qr_light: over.qr_light.or(self.qr_light),
         }
@@ -263,6 +279,14 @@ pub struct Theme {
     pub code_bg: Color,
     /// Code block text.
     pub code_fg: Color,
+    /// Syntax highlighting: keywords.
+    pub code_keyword: Color,
+    /// Syntax highlighting: strings.
+    pub code_string: Color,
+    /// Syntax highlighting: comments (also italicized).
+    pub code_comment: Color,
+    /// Syntax highlighting: numbers and named constants.
+    pub code_literal: Color,
     /// QR code modules.
     pub qr_dark: Color,
     /// QR code background, quiet zone included.
@@ -299,6 +323,10 @@ impl Default for Theme {
             inline_code: Color::Yellow,
             code_bg: Color::Indexed(235),
             code_fg: Color::Indexed(252),
+            code_keyword: Color::Magenta,
+            code_string: Color::Green,
+            code_comment: Color::Indexed(244),
+            code_literal: Color::Yellow,
             // True black-on-white from the 256-color cube — scanners
             // want dark-on-light, and ANSI black/white are remappable.
             qr_dark: Color::Indexed(16),
@@ -424,6 +452,10 @@ impl Theme {
         color!(inline_code);
         color!(code_bg);
         color!(code_fg);
+        color!(code_keyword);
+        color!(code_string);
+        color!(code_comment);
+        color!(code_literal);
         color!(qr_dark);
         color!(qr_light);
         Ok(t)
