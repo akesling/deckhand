@@ -34,6 +34,7 @@
         "notes": "Two terminals stacked: a fixed-height python REPL and a fill shell below it. t cycles focus."
       }
     ],
+    { "file": "slides/qr.md", "notes": "Scannable straight off the screen — drawn black-on-white whatever the theme says." },
     { "file": "slides/fin.md", "notes_file": "slides/fin-notes.md" }
   ]
 }
