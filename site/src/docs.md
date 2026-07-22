@@ -196,12 +196,18 @@ All fields, all optional:
   "link": "light-blue",
   "inline_code": "yellow",
   "code_bg": 235,
-  "code_fg": 252
+  "code_fg": 252,
+  "qr_dark": "#102040",
+  "qr_light": "#fdf6e3"
 }
 ```
 
 Colors take a name (`"cyan"`, `"light-blue"`), hex (`"#rrggbb"`), or a
-0–255 palette index. `snapshot_border` styles terminals showing a
+0–255 palette index. `qr_dark`/`qr_light` color QR blocks (modules /
+background, quiet zone included), defaulting to true black on true
+white — restyle at your own risk: scanners need a dark code on a light
+background with strong contrast, so dark navy on cream scans fine but
+an inverted or low-contrast pairing often won't. `snapshot_border` styles terminals showing a
 baked-in snapshot, superseding `term_border` for those — set it in a
 slide's `theme` fence to mark that slide's captures distinctly; unset,
 snapshots use `term_border` like any terminal. `border_type` is `plain`, `rounded`, `double`, or

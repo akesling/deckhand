@@ -118,6 +118,14 @@ pub struct ThemeConfig {
     /// Code block text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_fg: Option<ColorSpec>,
+    /// QR code modules (default true black). Keep it darker than
+    /// `qr_light` and high-contrast, or scanners will give up; light
+    /// codes on dark backgrounds fail on many readers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qr_dark: Option<ColorSpec>,
+    /// QR code background, quiet zone included (default true white).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qr_light: Option<ColorSpec>,
 }
 
 impl ThemeConfig {
@@ -143,6 +151,8 @@ impl ThemeConfig {
             inline_code: over.inline_code.or(self.inline_code),
             code_bg: over.code_bg.or(self.code_bg),
             code_fg: over.code_fg.or(self.code_fg),
+            qr_dark: over.qr_dark.or(self.qr_dark),
+            qr_light: over.qr_light.or(self.qr_light),
         }
     }
 }
@@ -199,6 +209,10 @@ pub struct Theme {
     pub code_bg: Color,
     /// Code block text.
     pub code_fg: Color,
+    /// QR code modules.
+    pub qr_dark: Color,
+    /// QR code background, quiet zone included.
+    pub qr_light: Color,
 }
 
 impl Default for Theme {
@@ -226,6 +240,10 @@ impl Default for Theme {
             inline_code: Color::Yellow,
             code_bg: Color::Indexed(235),
             code_fg: Color::Indexed(252),
+            // True black-on-white from the 256-color cube — scanners
+            // want dark-on-light, and ANSI black/white are remappable.
+            qr_dark: Color::Indexed(16),
+            qr_light: Color::Indexed(231),
         }
     }
 }
@@ -309,6 +327,8 @@ impl Theme {
         color!(inline_code);
         color!(code_bg);
         color!(code_fg);
+        color!(qr_dark);
+        color!(qr_light);
         Ok(t)
     }
 }
@@ -392,6 +412,19 @@ mod tests {
         let t = Theme::resolve(vec![cfg]).unwrap();
         assert_eq!(t.term_border, Color::Blue);
         assert_eq!(t.snapshot_border(), Color::Yellow);
+    }
+
+    #[test]
+    fn qr_colors_default_to_true_black_on_white() {
+        let t = Theme::resolve(vec![]).unwrap();
+        assert_eq!(t.qr_dark, Color::Indexed(16));
+        assert_eq!(t.qr_light, Color::Indexed(231));
+
+        let cfg: ThemeConfig =
+            serde_json::from_str(r##"{ "qr_dark": "#102040", "qr_light": "#fdf6e3" }"##).unwrap();
+        let t = Theme::resolve(vec![cfg]).unwrap();
+        assert_eq!(t.qr_dark, Color::Rgb(0x10, 0x20, 0x40));
+        assert_eq!(t.qr_light, Color::Rgb(0xfd, 0xf6, 0xe3));
     }
 
     #[test]

@@ -338,7 +338,9 @@ by field (each later one wins):
   "link": "light-blue",
   "inline_code": "yellow",
   "code_bg": 235,
-  "code_fg": 252
+  "code_fg": 252,
+  "qr_dark": "#102040",
+  "qr_light": "#fdf6e3"
 }
 ```
 
@@ -350,6 +352,12 @@ terminals that are showing a baked-in snapshot, superseding
 `max_width`/`margin` are in terminal columns and `max_height` in rows
 (default unlimited — it caps the content box, including fill terminals,
 and the capped box still follows `vertical_align`).
+
+`qr_dark`/`qr_light` color QR blocks (modules / background, quiet zone
+included) and default to true black on true white. Restyle at your own
+risk: scanners need a dark code on a light background with strong
+contrast — dark navy on cream scans fine, an inverted or low-contrast
+pairing often won't.
 
 Tip: prefer palette indexes (16-255) or hex over ANSI names for grays.
 Schemes like solarized remap the 16 ANSI colors — ANSI "dark gray" becomes

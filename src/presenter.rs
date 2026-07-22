@@ -265,9 +265,11 @@ fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
         .collect()
 }
 
-/// A QR block as centered lines. Always black-on-white — scanners want
-/// a dark code on a light background, whatever the terminal palette
-/// thinks dark and light mean (Indexed 16/231 dodge ANSI remapping).
+/// A QR block as centered lines, colored by the theme's
+/// `qr_dark`/`qr_light` — true black-on-white by default, because
+/// scanners want a dark code on a light background and a themed
+/// terminal guarantees neither. Themes that override this own its
+/// scannability.
 fn qr_text(q: &crate::deck::QrBlock, w: u16, theme: &Theme) -> Text<'static> {
     let qw = q.rows.first().map(|r| r.chars().count()).unwrap_or(0);
     if qw > w as usize {
@@ -278,9 +280,7 @@ fn qr_text(q: &crate::deck::QrBlock, w: u16, theme: &Theme) -> Text<'static> {
                 .add_modifier(Modifier::ITALIC),
         )));
     }
-    let style = Style::default()
-        .fg(Color::Indexed(16))
-        .bg(Color::Indexed(231));
+    let style = Style::default().fg(theme.qr_dark).bg(theme.qr_light);
     let pad = " ".repeat((w as usize - qw) / 2);
     Text::from(
         q.rows
@@ -1332,6 +1332,23 @@ mod tests {
             "no black-on-white QR cells drawn"
         );
         assert!(cells.clone().any(|c| c.symbol().contains('█')));
+    }
+
+    #[test]
+    fn qr_colors_follow_slide_theme() {
+        let deck = crate::deck::parse(
+            "```theme\nqr_dark: red\nqr_light: white\n```\n```qr\nhi\n```\n",
+            "t",
+        )
+        .unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 40, 20);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let themed = (0..area.height)
+            .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+            .any(|pos| buf[pos].fg == Color::Red && buf[pos].bg == Color::White);
+        assert!(themed, "qr_dark/qr_light overrides not applied");
     }
 
     #[test]
