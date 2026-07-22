@@ -361,7 +361,8 @@ recording.
 
 - no syntax highlighting in code blocks (yet)
 - slides taller than the window are clipped, not scrolled
-- no images
+- images render as ASCII art, and only when presenting natively — the
+  browser presenter shows a placeholder
 - native presenting is unix-only (PTYs + unix sockets)
 - the browser presenter can't run terminals — that's what the real one
   is for

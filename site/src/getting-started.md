@@ -83,6 +83,30 @@ goes to the terminal), `Ctrl-q` returns to the deck, `s` stops it, and
 body empty for an interactive shell, or use `rows=fill` to fill the
 slide.
 
+## Add a QR code — or two, side by side
+
+A `qr` fence renders as a scannable code (black-on-white, whatever
+your theme), and a `row` fence puts blocks next to each other, cells
+split by `||`:
+
+`````markdown
+# find the slides later
+
+````row
+```qr
+https://gist.github.com/you/abc123
+```
+||
+```qr
+https://en.wikipedia.org/wiki/QR_code
+```
+````
+`````
+
+Rows hold any blocks — markdown next to a terminal, code beside a QR.
+And a markdown image alone on its own line (`![diagram](arch.png)`)
+renders as colored ASCII art, resolved against the deck's directory.
+
 ## Add presenter notes
 
 Everything after a bare `???` line is invisible to the audience:
