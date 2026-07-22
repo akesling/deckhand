@@ -30,7 +30,7 @@ use ratatui::widgets::{
 use crate::deck::{Deck, Segment, Slide, TermBlock};
 use crate::hints::{JUMP_KEYS, jump_codes};
 use crate::markdown;
-use crate::theme::{Theme, ThemeConfig, VAlign};
+use crate::theme::{HAlign, Theme, ThemeConfig, VAlign};
 
 // ----------------------------------------------------------------- events
 
@@ -920,18 +920,30 @@ impl<P: TerminalProvider> Presenter<P> {
 
     fn draw_slide(&mut self, area: Rect, buf: &mut Buffer) {
         let theme = self.current_theme();
-        let w = area
-            .width
-            .saturating_sub(theme.margin.saturating_mul(2))
-            .min(theme.max_width);
-        if w < 10 || area.height < 2 {
+
+        // One content box, two axes, same rules on both: margins are
+        // minimum air (they always win), caps bound everything drawn,
+        // and alignment only places what's left.
+        let usable = Rect {
+            x: area.x + theme.margin_x.min(area.width / 2),
+            y: area.y + theme.margin_y.min(area.height / 2),
+            width: area.width.saturating_sub(theme.margin_x.saturating_mul(2)),
+            height: area.height.saturating_sub(theme.margin_y.saturating_mul(2)),
+        };
+        let w = usable.width.min(theme.max_width);
+        if w < 10 || usable.height < 1 {
             return;
         }
-        let x = area.x + (area.width - w) / 2;
+        let x = usable.x
+            + match theme.align_x {
+                HAlign::Left => 0,
+                HAlign::Center => (usable.width - w) / 2,
+                HAlign::Right => usable.width - w,
+            };
 
         // Pinned title: carve the leading heading off the first
-        // segment and anchor it to the top of the slide; the body
-        // below still follows `vertical_align`.
+        // segment and anchor it to the top of the usable area; the
+        // body below still follows `align_y`.
         let mut title: Option<Text<'static>> = None;
         let mut first_md_body: Option<String> = None;
         if theme.pin_title
@@ -944,26 +956,30 @@ impl<P: TerminalProvider> Presenter<P> {
         }
         let title_h = title
             .as_ref()
-            .map(|t| (t.height() as u16).min(area.height))
+            .map(|t| (t.height() as u16).min(usable.height))
             .unwrap_or(0);
         if let Some(t) = title {
             let rect = Rect {
                 x,
-                y: area.y,
+                y: usable.y,
                 width: w,
                 height: title_h,
             };
             Paragraph::new(t).render(rect, buf);
         }
-        // The body lays out in what's left below the title (plus a
-        // separating blank line).
-        let carved = if title_h > 0 { title_h + 1 } else { 0 };
-        let area = Rect {
-            y: area.y + carved.min(area.height),
-            height: area.height.saturating_sub(carved),
-            ..area
+        // The body lays out below the title and its gap; the height
+        // cap covers title, gap, and body together.
+        let carved = if title_h > 0 {
+            title_h + theme.title_gap
+        } else {
+            0
         };
-        if area.height == 0 {
+        let body = Rect {
+            y: usable.y + carved.min(usable.height),
+            height: usable.height.saturating_sub(carved),
+            ..usable
+        };
+        if body.height == 0 {
             return;
         }
 
@@ -973,7 +989,9 @@ impl<P: TerminalProvider> Presenter<P> {
             /// Side-by-side cells, each a fixed-height stack.
             Row(Vec<Vec<(u16, CellItem)>>, u16),
         }
-        let box_h = area.height.min(theme.max_height);
+        let box_h = body
+            .height
+            .min(theme.max_height.saturating_sub(carved).max(1));
         let mut items: Vec<(Option<u16>, RenderItem)> = Vec::new();
         for (i, seg) in self
             .deck
@@ -1045,11 +1063,11 @@ impl<P: TerminalProvider> Presenter<P> {
         let heights: Vec<u16> = items.iter().map(|(h, _)| h.unwrap_or(fill_h)).collect();
         let total: u16 = heights.iter().sum::<u16>() + gaps;
         let visible = total.min(box_h);
-        let mut y = area.y
-            + if theme.vertical_align == VAlign::Center && visible < area.height {
-                (area.height - visible) / 2
-            } else {
-                0
+        let mut y = body.y
+            + match theme.align_y {
+                VAlign::Top => 0,
+                VAlign::Center => body.height.saturating_sub(visible) / 2,
+                VAlign::Bottom => body.height.saturating_sub(visible),
             };
         let bottom = y + visible;
         for ((_, item), h) in items.into_iter().zip(heights) {
@@ -1558,6 +1576,62 @@ mod tests {
             title_y > 3,
             "unpinned title at y={title_y}, expected floating"
         );
+    }
+
+    #[test]
+    fn box_model_composes_margins_caps_and_pin() {
+        // pin_title + margin_y + title_gap + max_height, all at once:
+        // margins inset the title, the gap spaces the body, and the
+        // cap bounds title+gap+body together.
+        let deck = crate::deck::parse(
+            "```theme\npin_title: true\nmargin_y: 2\ntitle_gap: 2\nmax_height: 9\nalign_y: top\n```\n# TITLE\n\na\n\nb\n\nc\n\nd\n\ne\n",
+            "t",
+        )
+        .unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 40, 24);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let row = |y: u16| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        // Title at margin_y, not row 0.
+        assert!(!row(0).contains("TITLE"));
+        assert!(row(2).contains("TITLE"), "row 2: {:?}", row(2));
+        // title_gap: 2 → body starts at y = 2 (margin) + 2 (title) + 2.
+        assert!(row(6).contains('a'), "row 6: {:?}", row(6));
+        // max_height 9 bounds title(2)+gap(2)+body → body ≤ 5 rows:
+        // "a", blank, "b", blank, "c" fit; "d" (row 12) does not.
+        assert!(row(10).contains('c'), "row 10: {:?}", row(10));
+        assert!(
+            !(0..24).any(|y| row(y).contains('d')),
+            "cap should clip past max_height"
+        );
+    }
+
+    #[test]
+    fn align_x_and_bottom_place_the_box() {
+        let deck = crate::deck::parse(
+            "```theme\nalign_x: right\nalign_y: bottom\nmargin: 0\nmax_width: 20\n```\nhi\n",
+            "t",
+        )
+        .unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 60, 10);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let row = |y: u16| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        // Content box is 20 wide, right-aligned in 60 → "hi" at x=40;
+        // one row tall, bottom-aligned in 9 content rows → y=8.
+        assert!(row(8).contains("hi"), "row 8: {:?}", row(8));
+        assert!(row(8).find("hi").unwrap() >= 40);
+        assert!(!(0..8).any(|y| row(y).contains("hi")));
     }
 
     #[test]

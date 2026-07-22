@@ -62,20 +62,33 @@ pub struct ThemeConfig {
     /// Max content width in columns (default 96).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_width: Option<u16>,
-    /// Max content height in rows (default unlimited). Caps how tall the
-    /// slide content box gets — including fill terminals.
+    /// Max content height in rows (default unlimited). Caps everything
+    /// drawn — fill terminals and a pinned title included.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_height: Option<u16>,
-    /// Minimum horizontal margin per side, in columns (default 2).
+    /// Minimum air on all four sides, in cells: shorthand that sets
+    /// both axes. The per-axis keys win where both are given.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub margin: Option<u16>,
-    /// "center" (default) or "top".
+    /// Minimum horizontal margin per side, in columns (default 2).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vertical_align: Option<String>,
-    /// Anchor a slide-leading heading to the top of the slide; the
-    /// body below it still follows `vertical_align`. Default false.
+    pub margin_x: Option<u16>,
+    /// Minimum vertical margin per side, in rows (default 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub margin_y: Option<u16>,
+    /// Where leftover width goes: "left", "center" (default), "right".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub align_x: Option<String>,
+    /// Where leftover height goes: "top", "center" (default), "bottom".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub align_y: Option<String>,
+    /// Anchor a slide-leading heading to the top of the content area;
+    /// the body below it still follows `align_y`. Default false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pin_title: Option<bool>,
+    /// Blank rows between a pinned title and the body (default 1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_gap: Option<u16>,
     /// "plain" (default), "rounded", "double", or "thick".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_type: Option<String>,
@@ -139,8 +152,12 @@ impl ThemeConfig {
             max_width: over.max_width.or(self.max_width),
             max_height: over.max_height.or(self.max_height),
             margin: over.margin.or(self.margin),
-            vertical_align: over.vertical_align.or(self.vertical_align),
+            margin_x: over.margin_x.or(self.margin_x),
+            margin_y: over.margin_y.or(self.margin_y),
+            align_x: over.align_x.or(self.align_x),
+            align_y: over.align_y.or(self.align_y),
             pin_title: over.pin_title.or(self.pin_title),
+            title_gap: over.title_gap.or(self.title_gap),
             border_type: over.border_type.or(self.border_type),
             accent: over.accent.or(self.accent),
             muted: over.muted.or(self.muted),
@@ -162,13 +179,28 @@ impl ThemeConfig {
     }
 }
 
-/// Where slide content sits when shorter than the window.
+/// Where leftover height goes when the content box is shorter than
+/// the space inside the margins.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VAlign {
     /// Vertically centered (the default).
     Center,
     /// Anchored to the top.
     Top,
+    /// Anchored to the bottom.
+    Bottom,
+}
+
+/// Where leftover width goes when the content box is narrower than
+/// the space inside the margins.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HAlign {
+    /// Horizontally centered (the default).
+    Center,
+    /// Anchored to the left edge.
+    Left,
+    /// Anchored to the right edge.
+    Right,
 }
 
 /// A fully-resolved theme, ready to render with. Produced by
@@ -180,12 +212,18 @@ pub struct Theme {
     /// Max content height in rows (`u16::MAX` = unlimited).
     pub max_height: u16,
     /// Minimum horizontal margin per side, in columns.
-    pub margin: u16,
-    /// Vertical placement of slide content.
-    pub vertical_align: VAlign,
-    /// Slide-leading headings stick to the top; the body follows
-    /// `vertical_align`.
+    pub margin_x: u16,
+    /// Minimum vertical margin per side, in rows.
+    pub margin_y: u16,
+    /// Horizontal placement of the content box within the margins.
+    pub align_x: HAlign,
+    /// Vertical placement of the content box within the margins.
+    pub align_y: VAlign,
+    /// Slide-leading headings stick to the top of the content area;
+    /// the body follows `align_y`.
     pub pin_title: bool,
+    /// Blank rows between a pinned title and the body.
+    pub title_gap: u16,
     /// Border style for terminals, overview boxes, and overlays.
     pub border_type: BorderType,
     /// Focused borders, overview selection, help chrome, key hints.
@@ -228,9 +266,12 @@ impl Default for Theme {
         Theme {
             max_width: 96,
             max_height: u16::MAX,
-            margin: 2,
-            vertical_align: VAlign::Center,
+            margin_x: 2,
+            margin_y: 0,
+            align_x: HAlign::Center,
+            align_y: VAlign::Center,
             pin_title: false,
+            title_gap: 1,
             border_type: BorderType::Plain,
             accent: Color::Cyan,
             // Mid-gray from the 256-color palette rather than ANSI
@@ -288,20 +329,46 @@ impl Theme {
         if let Some(h) = cfg.max_height {
             t.max_height = h.max(5);
         }
+        // `margin` is the both-axes shorthand; the per-axis keys win.
         if let Some(m) = cfg.margin {
-            t.margin = m.min(30);
+            t.margin_x = m.min(30);
+            t.margin_y = m.min(30);
+        }
+        if let Some(m) = cfg.margin_x {
+            t.margin_x = m.min(30);
+        }
+        if let Some(m) = cfg.margin_y {
+            t.margin_y = m.min(30);
+        }
+        if let Some(a) = cfg.align_x {
+            t.align_x = match a.as_str() {
+                "center" => HAlign::Center,
+                "left" => HAlign::Left,
+                "right" => HAlign::Right,
+                other => {
+                    bail!(
+                        "theme.align_x: expected \"left\", \"center\", or \"right\", got {other:?}"
+                    )
+                }
+            };
+        }
+        if let Some(a) = cfg.align_y {
+            t.align_y = match a.as_str() {
+                "center" => VAlign::Center,
+                "top" => VAlign::Top,
+                "bottom" => VAlign::Bottom,
+                other => {
+                    bail!(
+                        "theme.align_y: expected \"top\", \"center\", or \"bottom\", got {other:?}"
+                    )
+                }
+            };
         }
         if let Some(p) = cfg.pin_title {
             t.pin_title = p;
         }
-        if let Some(v) = cfg.vertical_align {
-            t.vertical_align = match v.as_str() {
-                "center" => VAlign::Center,
-                "top" => VAlign::Top,
-                other => {
-                    bail!("theme.vertical_align: expected \"center\" or \"top\", got {other:?}")
-                }
-            };
+        if let Some(g) = cfg.title_gap {
+            t.title_gap = g.min(20);
         }
         if let Some(b) = cfg.border_type {
             t.border_type = match b.as_str() {
@@ -424,6 +491,38 @@ mod tests {
         let t = Theme::resolve(vec![cfg]).unwrap();
         assert_eq!(t.term_border, Color::Blue);
         assert_eq!(t.snapshot_border(), Color::Yellow);
+    }
+
+    #[test]
+    fn margin_shorthand_and_axis_overrides() {
+        let t = Theme::resolve(vec![]).unwrap();
+        assert_eq!((t.margin_x, t.margin_y), (2, 0));
+
+        let cfg: ThemeConfig = serde_json::from_str(r#"{ "margin": 4 }"#).unwrap();
+        let t = Theme::resolve(vec![cfg]).unwrap();
+        assert_eq!((t.margin_x, t.margin_y), (4, 4));
+
+        // Per-axis keys beat the shorthand, whichever layer set it.
+        let user: ThemeConfig = serde_json::from_str(r#"{ "margin_y": 3 }"#).unwrap();
+        let deck: ThemeConfig = serde_json::from_str(r#"{ "margin": 1 }"#).unwrap();
+        let t = Theme::resolve(vec![user, deck]).unwrap();
+        assert_eq!((t.margin_x, t.margin_y), (1, 3));
+    }
+
+    #[test]
+    fn align_axes_resolve() {
+        let t = Theme::resolve(vec![]).unwrap();
+        assert_eq!(t.align_x, HAlign::Center);
+        assert_eq!(t.align_y, VAlign::Center);
+
+        let cfg: ThemeConfig =
+            serde_json::from_str(r#"{ "align_x": "right", "align_y": "bottom" }"#).unwrap();
+        let t = Theme::resolve(vec![cfg]).unwrap();
+        assert_eq!(t.align_x, HAlign::Right);
+        assert_eq!(t.align_y, VAlign::Bottom);
+
+        let cfg: ThemeConfig = serde_json::from_str(r#"{ "align_y": "middle" }"#).unwrap();
+        assert!(Theme::resolve(vec![cfg]).is_err());
     }
 
     #[test]

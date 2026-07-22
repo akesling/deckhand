@@ -205,9 +205,12 @@ All fields, all optional:
 {
   "max_width": 84,
   "max_height": 30,
-  "margin": 4,
-  "vertical_align": "top",
+  "margin": 2,
+  "margin_y": 1,
+  "align_x": "center",
+  "align_y": "top",
   "pin_title": true,
+  "title_gap": 1,
   "border_type": "rounded",
   "accent": "magenta",
   "muted": 244,
@@ -236,13 +239,29 @@ background with strong contrast, so dark navy on cream scans fine but
 an inverted or low-contrast pairing often won't. `snapshot_border` styles terminals showing a
 baked-in snapshot, superseding `term_border` for those — set it in a
 slide's `theme` fence to mark that slide's captures distinctly; unset,
-snapshots use `term_border` like any terminal. `border_type` is `plain`, `rounded`, `double`, or
-`thick`; `vertical_align` is `center` or `top`. `max_width` / `margin`
-are terminal columns; `max_height` is rows and caps the content box —
-including fill terminals. `pin_title` nails a slide-leading heading to
-the top row while the body below keeps following `vertical_align` —
-titles stop drifting slide-to-slide without giving up centered
-content.
+snapshots use `term_border` like any terminal. `border_type` is
+`plain`, `rounded`, `double`, or `thick`.
+
+### Layout
+
+One content box, two axes, the same three questions per axis — and
+three rules: margins always win, caps bound everything drawn,
+alignment only places what's left.
+
+| axis | air (min) | cap (max) | leftover space |
+|------|-----------|-----------|----------------|
+| x | `margin_x` (default 2) | `max_width` (default 96) | `align_x`: left / **center** / right |
+| y | `margin_y` (default 0) | `max_height` (default unlimited) | `align_y`: top / **center** / bottom |
+
+`margin` sets both axes at once; the per-axis keys win over it. Units
+are terminal cells (columns / rows). `max_height` caps everything the
+slide draws — fill terminals and a pinned title included.
+
+`pin_title` anchors a slide-leading heading to the top of the content
+area (i.e. at row `margin_y`), with `title_gap` blank rows (default 1)
+below it; the body lays out in the remaining space, still following
+`align_y`. That's how a title sits on the same row on every slide
+while the body stays centered.
 
 > Tip: prefer palette indexes (16–255) or hex over ANSI names for
 > grays. Schemes like solarized remap the 16 ANSI colors, turning ANSI

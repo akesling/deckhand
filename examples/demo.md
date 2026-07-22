@@ -100,7 +100,7 @@ same fence, much more content — the heading didn't move, the body
 just grew around its own center
 
 - headings are always bold; `h1` / `h2` set their colors
-- `pin_title` anchors the heading only; `vertical_align: top` pins
+- `pin_title` anchors the heading only; `align_y: top` pins
   *everything* instead
 - set either deck-wide in frontmatter, per-user in
   `~/.config/deckhand/theme.json`, or per-slide like here

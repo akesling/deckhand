@@ -347,9 +347,12 @@ by field (each later one wins):
 {
   "max_width": 84,
   "max_height": 30,
-  "margin": 4,
-  "vertical_align": "top",
+  "margin": 2,
+  "margin_y": 1,
+  "align_x": "center",
+  "align_y": "top",
   "pin_title": true,
+  "title_gap": 1,
   "border_type": "rounded",
   "accent": "magenta",
   "muted": 244,
@@ -373,14 +376,27 @@ by field (each later one wins):
 Every field is optional. Colors take a name (`"cyan"`, `"light-blue"`),
 hex (`"#rrggbb"`), or a 0-255 palette index. `snapshot_border` styles
 terminals that are showing a baked-in snapshot, superseding
-`term_border` for those (unset = same as `term_border`). `border_type` is `plain`,
-`rounded`, `double`, or `thick`; `vertical_align` is `center` or `top`;
-`max_width`/`margin` are in terminal columns and `max_height` in rows
-(default unlimited — it caps the content box, including fill terminals,
-and the capped box still follows `vertical_align`). `pin_title` nails a
-slide-leading heading to the top row while the body below keeps
-following `vertical_align` — the way to stop titles drifting
-slide-to-slide without giving up centered content.
+`term_border` for those (unset = same as `term_border`). `border_type`
+is `plain`, `rounded`, `double`, or `thick`.
+
+**Layout** is one content box, two axes, the same three questions per
+axis — and three rules: margins always win, caps bound everything
+drawn, alignment only places what's left.
+
+| axis | air (min) | cap (max) | leftover space |
+|------|-----------|-----------|----------------|
+| x | `margin_x` (default 2) | `max_width` (default 96) | `align_x`: left / **center** / right |
+| y | `margin_y` (default 0) | `max_height` (default unlimited) | `align_y`: top / **center** / bottom |
+
+`margin` sets both axes at once; the per-axis keys win over it. Units
+are terminal cells (columns / rows). `max_height` caps everything the
+slide draws — fill terminals and a pinned title included.
+
+`pin_title` anchors a slide-leading heading to the top of the content
+area (i.e. at row `margin_y`), with `title_gap` blank rows (default 1)
+below it; the body lays out in the remaining space, still following
+`align_y`. That's how a title sits on the same row on every slide
+while the body stays centered.
 
 `qr_dark`/`qr_light` color QR blocks (modules / background, quiet zone
 included) and default to true black on true white. Restyle at your own
