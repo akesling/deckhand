@@ -143,6 +143,14 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
                         }
                         out.push_str("```\n\n");
                     }
+                    Segment::Qr(q) => {
+                        out.push_str("```qr\n");
+                        out.push_str(&q.data);
+                        out.push_str("\n```\n\n");
+                    }
+                    Segment::Image(img) => {
+                        out.push_str(&format!("![{}]({})\n\n", img.alt, img.path));
+                    }
                 }
             }
             if !slide.notes.is_empty() {
@@ -236,6 +244,24 @@ mod tests {
                 assert!(b.fill);
             }
             _ => panic!("expected terminal"),
+        }
+    }
+
+    #[test]
+    fn qr_and_image_round_trip() {
+        let src = "# a\n```qr\nhttps://deckhand.sh\n```\n![diagram](arch.png)\n";
+        let deck = deck::parse(src, "t").unwrap();
+        let (md, rewrites) = compile(&deck).unwrap();
+        assert_eq!(rewrites, 0);
+        let reparsed = deck::parse(&md, "t").unwrap();
+        let slide = reparsed.slide(0, 0);
+        match (&slide.segments[1], &slide.segments[2]) {
+            (Segment::Qr(q), Segment::Image(img)) => {
+                assert_eq!(q.data, "https://deckhand.sh");
+                assert_eq!(img.path, "arch.png");
+                assert_eq!(img.alt, "diagram");
+            }
+            other => panic!("unexpected segments: {other:?}"),
         }
     }
 

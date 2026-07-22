@@ -23,6 +23,7 @@ crate-type = ["cdylib", "rlib"]
 anyhow = "1"
 base64 = "0.22"
 pulldown-cmark = { version = "0.12", default-features = false }
+qrcode = { version = "0.14", default-features = false }
 ratatui = { version = "0.29", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -34,6 +35,7 @@ vt100 = "0.15"
 # Native-only: the terminal UI, PTYs, notes socket, HTTP fetching, CLI.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 portable-pty = "0.8"
 ratatui = { version = "0.29", default-features = false, features = ["crossterm", "underline-color"] }
 reqwest = "0.12"

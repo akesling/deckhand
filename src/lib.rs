@@ -70,6 +70,8 @@
 //! | [`config`] | JSON manifest loading |
 //! | [`markdown`] | markdown → styled ratatui text |
 //! | [`theme`] | theming: layout, borders, colors, precedence |
+//! | [`qr`] | ```` ```qr ```` fences → scannable unicode QR codes |
+//! | [`ascii_image`] | markdown images → colored ASCII art |
 //! | [`presenter`] | shared presentation core + provider trait |
 //! | [`hints`] | overview quick-jump codes |
 //! | [`compile`] | flatten any deck to single-file markdown |
@@ -119,6 +121,7 @@
 
 #![warn(missing_docs)]
 
+pub mod ascii_image;
 pub mod compile;
 pub mod config;
 pub mod deck;
@@ -126,6 +129,7 @@ pub mod hints;
 pub mod markdown;
 pub mod presenter;
 pub mod proto;
+pub mod qr;
 pub mod theme;
 
 #[cfg(not(target_arch = "wasm32"))]

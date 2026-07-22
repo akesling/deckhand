@@ -265,6 +265,60 @@ fn term_blocks(deck: &Deck) -> Vec<&TermBlock> {
         .collect()
 }
 
+/// A QR block as centered lines. Always black-on-white — scanners want
+/// a dark code on a light background, whatever the terminal palette
+/// thinks dark and light mean (Indexed 16/231 dodge ANSI remapping).
+fn qr_text(q: &crate::deck::QrBlock, w: u16, theme: &Theme) -> Text<'static> {
+    let qw = q.rows.first().map(|r| r.chars().count()).unwrap_or(0);
+    if qw > w as usize {
+        return Text::from(Line::from(Span::styled(
+            format!("[qr code needs {qw} columns]"),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
+        )));
+    }
+    let style = Style::default()
+        .fg(Color::Indexed(16))
+        .bg(Color::Indexed(231));
+    let pad = " ".repeat((w as usize - qw) / 2);
+    Text::from(
+        q.rows
+            .iter()
+            .map(|row| {
+                Line::from(vec![
+                    Span::raw(pad.clone()),
+                    Span::styled(row.clone(), style),
+                ])
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// What an image block shows when its pixels aren't loaded: alt text,
+/// plus the reason (load failure natively, no filesystem on the web).
+fn image_placeholder(img: &crate::deck::ImageBlock, theme: &Theme) -> Text<'static> {
+    let muted = Style::default().fg(theme.muted);
+    let label = if img.alt.is_empty() {
+        img.path.as_str()
+    } else {
+        img.alt.as_str()
+    };
+    let mut lines = vec![Line::from(Span::styled(format!("▦ image: {label}"), muted))];
+    let detail = match &img.error {
+        Some(e) => e.clone(),
+        None => format!(
+            "{} — renders as ASCII art in the native presenter",
+            img.path
+        ),
+    };
+    lines.push(Line::from(Span::styled(
+        format!("  {detail}"),
+        muted.add_modifier(Modifier::ITALIC),
+    )));
+    Text::from(lines)
+}
+
 /// Resolve per-slide theme overrides against the base config stack.
 fn resolve_slide_themes(
     deck: &Deck,
@@ -813,6 +867,7 @@ impl<P: TerminalProvider> Presenter<P> {
             Text(Text<'static>),
             Term(TermBlock),
         }
+        let box_h = area.height.min(theme.max_height);
         let mut items: Vec<(Option<u16>, RenderItem)> = Vec::new();
         for seg in &self.deck.slide(self.col, self.row).segments {
             match seg {
@@ -827,13 +882,23 @@ impl<P: TerminalProvider> Presenter<P> {
                     let h = if b.fill { None } else { Some(b.rows + 2) };
                     items.push((h, RenderItem::Term(b.clone())));
                 }
+                Segment::Qr(q) => {
+                    let text = qr_text(q, w, &theme);
+                    items.push((Some(text.height() as u16), RenderItem::Text(text)));
+                }
+                Segment::Image(img) => {
+                    let text = match &img.data {
+                        Some(data) => crate::ascii_image::render(data, w, box_h),
+                        None => image_placeholder(img, &theme),
+                    };
+                    items.push((Some(text.height() as u16), RenderItem::Text(text)));
+                }
             }
         }
         if items.is_empty() {
             return;
         }
 
-        let box_h = area.height.min(theme.max_height);
         let gaps = items.len().saturating_sub(1) as u16;
         let fixed: u16 = items.iter().filter_map(|(h, _)| *h).sum();
         let nfill = items.iter().filter(|(h, _)| h.is_none()).count() as u16;
@@ -1248,6 +1313,64 @@ mod tests {
         p.on_key(KeyPress::plain(Key::Char('d')));
         assert_eq!(p.position(), (1, 1));
         assert!(matches!(p.mode, Mode::Slide));
+    }
+
+    #[test]
+    fn qr_slide_draws_black_on_white() {
+        let deck = crate::deck::parse("```qr\nhttps://deckhand.sh\n```\n", "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 80, 40);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let cells = (0..area.height)
+            .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+            .map(|pos| &buf[pos]);
+        assert!(
+            cells
+                .clone()
+                .any(|c| c.bg == Color::Indexed(231) && c.fg == Color::Indexed(16)),
+            "no black-on-white QR cells drawn"
+        );
+        assert!(cells.clone().any(|c| c.symbol().contains('█')));
+    }
+
+    #[test]
+    fn image_slide_draws_ascii_and_placeholder() {
+        let mut deck = crate::deck::parse("![pic](p.png)\n", "t").unwrap();
+        // Placeholder first (no pixels loaded)…
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 60, 20);
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let row = |buf: &Buffer, y: u16| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        let screen = (0..area.height)
+            .map(|y| row(&buf, y))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(screen.contains("image: pic"), "screen:\n{screen}");
+
+        // …then real pixels render as a colored ramp.
+        deck = crate::deck::parse("![pic](p.png)\n", "t").unwrap();
+        if let crate::deck::Segment::Image(img) = &mut deck.columns[0].slides[0].segments[0] {
+            img.data = Some(crate::ascii_image::ImageData {
+                width: 8,
+                height: 8,
+                rgba: [200u8, 200, 200, 255].repeat(64),
+            });
+        }
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let screen = (0..area.height)
+            .map(|y| row(&buf, y))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // Luminance 200/255 lands on '#' in the ramp.
+        assert!(screen.contains('#'), "no ramp glyphs drawn:\n{screen}");
     }
 
     #[test]

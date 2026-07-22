@@ -80,6 +80,34 @@ python3 -q
 - multiple terminal blocks on one slide stack vertically; fill-height
   ones split the leftover space evenly
 
+### QR codes
+
+A fenced block whose info string is `qr` renders its body — a URL, some
+text — as a scannable QR code:
+
+````markdown
+```qr
+https://deckhand.sh
+```
+````
+
+It draws black-on-white whatever the terminal palette, so phone cameras
+actually read it. Works right here in the browser presenter, too — try
+it in the [playground](/playground/).
+
+### Images as ASCII art
+
+A markdown image alone on its own line renders as colored ASCII art,
+scaled to the slide and resolved against the deck's directory:
+
+```markdown
+![the architecture](diagrams/arch.png)
+```
+
+PNG, JPEG, GIF, and WebP. Images referenced mid-sentence stay inline
+text, and the browser presenter shows a placeholder — pixels need a
+filesystem.
+
 ### Per-slide themes
 
 A `theme` fence anywhere on a slide overrides the theme for that slide

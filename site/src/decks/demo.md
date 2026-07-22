@@ -95,6 +95,17 @@ type a code to teleport; this is how you field
 
 ---
 
+# take it with you
+
+```qr
+https://deckhand.sh
+```
+
+a ```` ```qr ```` fence renders any URL or text — scan this one right
+off the screen
+
+---
+
 # get it
 
 ```

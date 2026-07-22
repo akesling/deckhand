@@ -122,6 +122,34 @@ python3 -q
 - Once a terminal has history, a scrollbar appears on its right border —
   thumb sized to viewport-vs-history, accent-colored while focused.
 
+### QR codes
+
+A fenced block whose info string is `qr` renders its body — a URL, some
+text — as a scannable QR code, drawn black-on-white regardless of the
+terminal palette so phone cameras actually read it:
+
+````markdown
+```qr
+https://deckhand.sh
+```
+````
+
+Great for the "slides are at…" closer. Works in the browser presenter
+too.
+
+### Images as ASCII art
+
+A markdown image alone on its own line renders as colored ASCII art,
+scaled to the slide and resolved against the deck's directory:
+
+```markdown
+![the architecture](diagrams/arch.png)
+```
+
+PNG, JPEG, GIF, and WebP. Images referenced mid-sentence stay inline
+text (`[image: alt]`), and the browser presenter shows a placeholder —
+pixels need a filesystem.
+
 ## JSON decks
 
 For bigger talks, point deckhand at a manifest instead:

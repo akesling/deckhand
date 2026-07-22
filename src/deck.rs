@@ -16,6 +16,11 @@
 //! ````
 //!
 //!   An empty body spawns an interactive shell ($SHELL).
+//!
+//!   A fenced block whose info string is `qr` renders its body as a
+//!   scannable QR code, and a markdown image alone on a line
+//!   (`![alt](diagram.png)`) renders as colored ASCII art when
+//!   presenting natively.
 
 use std::path::Path;
 
@@ -64,6 +69,35 @@ pub enum Segment {
     Markdown(String),
     /// An embedded terminal.
     Terminal(TermBlock),
+    /// A QR code, from a ```` ```qr ```` fence.
+    Qr(QrBlock),
+    /// An image referenced from the markdown, drawn as ASCII art.
+    Image(ImageBlock),
+}
+
+/// A QR code block: the payload plus its pre-encoded unicode rows
+/// (encoding happens at parse time so bad payloads fail with slide
+/// context, and so re-renders don't re-encode).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QrBlock {
+    /// The encoded payload, as authored (URL, text, …).
+    pub data: String,
+    /// Half-block rows from [`crate::qr::encode`]; uniform width.
+    pub rows: Vec<String>,
+}
+
+/// An image referenced on its own markdown line (`![alt](path)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageBlock {
+    /// The path as authored, resolved against the deck's directory.
+    pub path: String,
+    /// The alt text, shown by placeholders and when loading fails.
+    pub alt: String,
+    /// Decoded pixels, filled in by [`Deck::resolve_images`] when a
+    /// filesystem is available; `None` draws a placeholder.
+    pub data: Option<crate::ascii_image::ImageData>,
+    /// Why `data` is missing, if loading was attempted and failed.
+    pub error: Option<String>,
 }
 
 /// An embedded terminal block, as authored in the deck.
@@ -122,6 +156,28 @@ impl Deck {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Load pixels for every image segment, resolving relative paths
+    /// against `base` (the deck's directory). Failures don't abort the
+    /// deck — the slide shows the alt text and the error instead, the
+    /// same honesty rule terminals follow on the web.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn resolve_images(&mut self, base: &Path) {
+        for column in &mut self.columns {
+            for slide in &mut column.slides {
+                for seg in &mut slide.segments {
+                    if let Segment::Image(img) = seg
+                        && img.data.is_none()
+                    {
+                        match crate::ascii_image::load(&base.join(&img.path)) {
+                            Ok(data) => img.data = Some(data),
+                            Err(e) => img.error = Some(format!("{e:#}")),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Depth-first traversal order: all slides of column 0 top-to-bottom,
@@ -375,11 +431,29 @@ pub fn parse_slide(src: &str, col: usize, row: usize, next_term_id: &mut usize) 
     })
 }
 
-/// A special fence being collected: a `terminal` block's body, or a
-/// `theme` block's YAML.
+/// A special fence being collected: a `terminal` block's body, a
+/// `theme` block's YAML, or a `qr` block's payload.
 enum Pending {
     Term(TermBlock, String),
     Theme(String),
+    Qr(String),
+}
+
+/// `![alt](path)` alone on a line (optionally with a `"title"` after
+/// the path, which markdown allows and we drop).
+fn image_line(t: &str) -> Option<(String, String)> {
+    let rest = t.strip_prefix("![")?;
+    let (alt, rest) = rest.split_once("](")?;
+    let inner = rest.strip_suffix(')')?;
+    if inner.contains(')') {
+        return None;
+    }
+    let path = match inner.split_once(" \"") {
+        Some((p, _title)) => p,
+        None => inner,
+    }
+    .trim();
+    (!path.is_empty()).then(|| (alt.to_string(), path.to_string()))
 }
 
 fn parse_segments(
@@ -443,6 +517,14 @@ fn parse_segments(
         });
         Ok(())
     };
+    let finish_qr = |qbody: &str| -> Result<QrBlock> {
+        let data = qbody.trim().to_string();
+        if data.is_empty() {
+            anyhow::bail!("`qr` block is empty — put a URL or text inside the fence");
+        }
+        let rows = crate::qr::encode(&data).context("in `qr` block")?;
+        Ok(QrBlock { data, rows })
+    };
 
     for line in body.lines() {
         let t = line.trim();
@@ -456,12 +538,19 @@ fn parse_segments(
                         segments.push(Segment::Terminal(block));
                     }
                     Some(Pending::Theme(tbody)) => merge_theme(&mut theme, &tbody)?,
+                    Some(Pending::Qr(qbody)) => {
+                        flush_md(&mut md, &mut segments);
+                        segments.push(Segment::Qr(finish_qr(&qbody)?));
+                    }
                     None => {
                         md.push_str(line);
                         md.push('\n');
                     }
                 }
-            } else if let Some(Pending::Term(_, tbody) | Pending::Theme(tbody)) = pending.as_mut() {
+            } else if let Some(
+                Pending::Term(_, tbody) | Pending::Theme(tbody) | Pending::Qr(tbody),
+            ) = pending.as_mut()
+            {
                 tbody.push_str(line);
                 tbody.push('\n');
             } else {
@@ -501,11 +590,22 @@ fn parse_segments(
                     ));
                 }
                 Some("theme") => pending = Some(Pending::Theme(String::new())),
+                Some("qr") => pending = Some(Pending::Qr(String::new())),
                 _ => {
                     md.push_str(line);
                     md.push('\n');
                 }
             }
+            continue;
+        }
+        if let Some((alt, path)) = image_line(t) {
+            flush_md(&mut md, &mut segments);
+            segments.push(Segment::Image(ImageBlock {
+                path,
+                alt,
+                data: None,
+                error: None,
+            }));
             continue;
         }
         md.push_str(line);
@@ -519,6 +619,10 @@ fn parse_segments(
             segments.push(Segment::Terminal(block));
         }
         Some(Pending::Theme(tbody)) => merge_theme(&mut theme, &tbody)?,
+        Some(Pending::Qr(qbody)) => {
+            flush_md(&mut md, &mut segments);
+            segments.push(Segment::Qr(finish_qr(&qbody)?));
+        }
         None => {}
     }
     flush_md(&mut md, &mut segments);
@@ -706,6 +810,79 @@ mod tests {
     fn bad_frontmatter_errors() {
         let src = "---\ntitle: x\nbogus_key: 1\n---\n# a\n";
         assert!(parse_full(src, "fallback").is_err());
+    }
+
+    #[test]
+    fn qr_block() {
+        let deck = parse("# a\n```qr\nhttps://deckhand.sh\n```\nafter\n", "t").unwrap();
+        let slide = deck.slide(0, 0);
+        match &slide.segments[1] {
+            Segment::Qr(q) => {
+                assert_eq!(q.data, "https://deckhand.sh");
+                assert!(q.rows.len() > 10);
+            }
+            other => panic!("expected qr segment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_qr_block_errors() {
+        let err = parse("# a\n```qr\n```\n", "t").unwrap_err();
+        assert!(format!("{err:#}").contains("slide 1.1"));
+    }
+
+    #[test]
+    fn image_line_becomes_segment() {
+        let deck = parse("# a\nbefore\n![the plan](plan.png)\nafter\n", "t").unwrap();
+        let slide = deck.slide(0, 0);
+        assert_eq!(slide.segments.len(), 3);
+        match &slide.segments[1] {
+            Segment::Image(img) => {
+                assert_eq!(img.path, "plan.png");
+                assert_eq!(img.alt, "the plan");
+                assert!(img.data.is_none());
+            }
+            other => panic!("expected image segment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn image_title_is_dropped() {
+        let deck = parse("![a](p.png \"hover text\")\n", "t").unwrap();
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Image(img) => assert_eq!(img.path, "p.png"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn image_inside_fence_stays_markdown() {
+        let deck = parse("```\n![a](p.png)\n```\n", "t").unwrap();
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Markdown(md) => assert!(md.contains("![a](p.png)")),
+            _ => panic!("expected markdown segment"),
+        }
+    }
+
+    #[test]
+    fn inline_image_stays_markdown() {
+        // Only a standalone image line becomes a segment.
+        let deck = parse("see ![a](p.png) here\n", "t").unwrap();
+        assert_eq!(deck.slide(0, 0).segments.len(), 1);
+        assert!(matches!(deck.slide(0, 0).segments[0], Segment::Markdown(_)));
+    }
+
+    #[test]
+    fn missing_image_resolves_to_error() {
+        let mut deck = parse("![a](does-not-exist.png)\n", "t").unwrap();
+        deck.resolve_images(Path::new("/nonexistent-base"));
+        match &deck.slide(0, 0).segments[0] {
+            Segment::Image(img) => {
+                assert!(img.data.is_none());
+                assert!(img.error.as_deref().unwrap().contains("does-not-exist"));
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]

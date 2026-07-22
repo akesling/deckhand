@@ -33,12 +33,13 @@ pub fn load(input: &str) -> Result<Loaded> {
         load_remote(input)
     } else {
         let path = Path::new(input);
-        let (deck, theme) = deck::load(path)?;
+        let (mut deck, theme) = deck::load(path)?;
         let base_dir = path
             .canonicalize()
             .ok()
             .and_then(|p| p.parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from("."));
+        deck.resolve_images(&base_dir);
         Ok(Loaded {
             deck,
             theme,

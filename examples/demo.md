@@ -119,6 +119,17 @@ deckhand notes
 
 ---
 
+# take it with you
+
+```qr
+https://deckhand.sh
+```
+
+a ```` ```qr ```` fence renders any URL or text, scannable from the
+audience — and `![alt](image.png)` on its own line renders as ASCII art
+
+---
+
 # fin
 
 single markdown file · no browser · no cloud
