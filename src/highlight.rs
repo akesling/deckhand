@@ -7,7 +7,9 @@
 //! makeup. Unknown languages render plain, exactly as before.
 //!
 //! Colors come from the theme: `code_keyword`, `code_string`,
-//! `code_comment`, `code_literal` (over the usual `code_bg`/`code_fg`).
+//! `code_comment`, `code_literal`, `code_function`, and `code_type`
+//! (over the usual `code_bg`/`code_fg`), defaulting to a One
+//! Dark-flavored truecolor palette.
 
 /// What a token is, semantically — the theme maps these to colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,12 +18,17 @@ pub enum Kind {
     Plain,
     /// Language keywords (`fn`, `def`, `SELECT`, …).
     Keyword,
-    /// Numbers and named constants (`42`, `true`, `None`, …).
+    /// Numbers, named constants (`42`, `true`, `None`), and
+    /// SCREAMING_CASE identifiers.
     Literal,
     /// String contents, delimiters included.
     Str,
     /// Comments, line or block.
     Comment,
+    /// An identifier being called: `name(`.
+    Function,
+    /// A Capitalized identifier — types, classes, constructors.
+    Type,
 }
 
 struct Lang {
@@ -36,6 +43,10 @@ struct Lang {
     literals: &'static [&'static str],
     /// Compare keywords case-insensitively (SQL).
     case_insensitive: bool,
+    /// Classify calls / Capitalized types / SCREAMING_CASE constants.
+    /// Off for shells and data formats, where capitalization means
+    /// nothing (`echo Hello` is not a type).
+    rich_idents: bool,
 }
 
 const LANGS: &[Lang] = &[
@@ -54,6 +65,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["Err", "None", "Ok", "Self", "Some", "false", "self", "true"],
         case_insensitive: false,
+        rich_idents: true,
     },
     Lang {
         names: &["python", "py"],
@@ -69,6 +81,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["False", "None", "True", "self"],
         case_insensitive: false,
+        rich_idents: true,
     },
     Lang {
         names: &["javascript", "js", "typescript", "ts", "jsx", "tsx"],
@@ -127,6 +140,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["NaN", "false", "null", "super", "this", "true", "undefined"],
         case_insensitive: false,
+        rich_idents: true,
     },
     Lang {
         names: &["sh", "bash", "shell", "zsh"],
@@ -141,6 +155,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["false", "true"],
         case_insensitive: false,
+        rich_idents: false,
     },
     Lang {
         names: &["go", "golang"],
@@ -177,6 +192,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["false", "iota", "nil", "true"],
         case_insensitive: false,
+        rich_idents: true,
     },
     Lang {
         names: &["c", "cpp", "c++", "cc", "h", "hpp"],
@@ -232,6 +248,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["NULL", "false", "nullptr", "true"],
         case_insensitive: false,
+        rich_idents: true,
     },
     Lang {
         names: &["json"],
@@ -242,6 +259,7 @@ const LANGS: &[Lang] = &[
         keywords: &[],
         literals: &["false", "null", "true"],
         case_insensitive: false,
+        rich_idents: false,
     },
     Lang {
         names: &["yaml", "yml"],
@@ -252,6 +270,7 @@ const LANGS: &[Lang] = &[
         keywords: &[],
         literals: &["false", "no", "null", "true", "yes"],
         case_insensitive: false,
+        rich_idents: false,
     },
     Lang {
         names: &["toml"],
@@ -262,6 +281,7 @@ const LANGS: &[Lang] = &[
         keywords: &[],
         literals: &["false", "true"],
         case_insensitive: false,
+        rich_idents: false,
     },
     Lang {
         names: &["sql"],
@@ -277,6 +297,7 @@ const LANGS: &[Lang] = &[
         ],
         literals: &["false", "null", "true"],
         case_insensitive: true,
+        rich_idents: false,
     },
 ];
 
@@ -385,7 +406,8 @@ impl Highlighter {
                             .find(|c: char| !(c.is_alphanumeric() || c == '_'))
                             .unwrap_or(rest.len());
                         let word = &rest[..end];
-                        push(word, self.word_kind(word));
+                        let called = rest[end..].starts_with('(');
+                        push(word, self.word_kind(word, called));
                         i += end;
                         continue;
                     }
@@ -418,7 +440,8 @@ impl Highlighter {
         rest.len()
     }
 
-    fn word_kind(&self, word: &str) -> Kind {
+    /// Classify one identifier; `called` = immediately followed by `(`.
+    fn word_kind(&self, word: &str, called: bool) -> Kind {
         if self.lang.case_insensitive {
             let lower = word.to_ascii_lowercase();
             if self.lang.keywords.contains(&lower.as_str()) {
@@ -430,12 +453,34 @@ impl Highlighter {
             return Kind::Plain;
         }
         if self.lang.keywords.contains(&word) {
-            Kind::Keyword
-        } else if self.lang.literals.contains(&word) {
-            Kind::Literal
-        } else {
-            Kind::Plain
+            return Kind::Keyword;
         }
+        if self.lang.literals.contains(&word) {
+            return Kind::Literal;
+        }
+        if !self.lang.rich_idents {
+            return Kind::Plain;
+        }
+        let mut chars = word.chars();
+        let first = chars.next().expect("words are non-empty");
+        // SCREAMING_CASE reads as a constant…
+        if first.is_ascii_uppercase()
+            && word.len() > 1
+            && word
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Kind::Literal;
+        }
+        // …Capitalized as a type/class/constructor…
+        if first.is_uppercase() {
+            return Kind::Type;
+        }
+        // …and anything being called as a function.
+        if called {
+            return Kind::Function;
+        }
+        Kind::Plain
     }
 }
 
@@ -501,6 +546,33 @@ mod tests {
         assert!(
             toks.iter()
                 .any(|(s, k)| s.contains("users") && *k == Kind::Plain)
+        );
+    }
+
+    #[test]
+    fn rich_identifiers_classify() {
+        let toks = kinds("rust", "let cfg = Config::load(MAX_RETRIES)");
+        assert!(toks.contains(&("Config".into(), Kind::Type)));
+        assert!(toks.contains(&("load".into(), Kind::Function)));
+        assert!(toks.contains(&("MAX_RETRIES".into(), Kind::Literal)));
+        assert!(
+            toks.iter()
+                .any(|(s, k)| s.contains("cfg") && *k == Kind::Plain)
+        );
+    }
+
+    #[test]
+    fn data_and_shell_idents_stay_plain() {
+        // `echo Hello` is not a type; yaml values aren't constructors.
+        let toks = kinds("sh", "echo Hello WORLD");
+        assert!(
+            toks.iter()
+                .all(|(_, k)| *k != Kind::Type && *k != Kind::Function)
+        );
+        let toks = kinds("yaml", "name: Alex(1)");
+        assert!(
+            toks.iter()
+                .all(|(_, k)| *k != Kind::Type && *k != Kind::Function)
         );
     }
 

@@ -83,12 +83,15 @@ python3 -q
 ### Syntax highlighting
 
 Fenced code blocks with a language tag get lightweight highlighting —
-keywords, strings, comments, numbers — for rust, python,
-javascript/typescript, go, c/c++, sh, json, yaml, toml, and sql.
-Unknown languages render plain. Colors come from the theme
-(`code_keyword`, `code_string`, `code_comment`, `code_literal`); it's
-a small built-in tokenizer, not a grammar engine, so the wasm
-presenter stays light and the browser gets the same colors.
+keywords, strings, comments, numbers/constants, called functions, and
+Capitalized types — for rust, python, javascript/typescript, go,
+c/c++, sh, json, yaml, toml, and sql. Unknown languages render plain.
+Colors come from the theme (`code_keyword`, `code_string`,
+`code_comment`, `code_literal`, `code_function`, `code_type`),
+defaulting to a One Dark-flavored truecolor palette — RGB, so
+terminal color schemes can't remap it. It's a small built-in
+tokenizer, not a grammar engine, so the wasm presenter stays light
+and the browser gets the same colors.
 
 ### QR codes
 
@@ -237,10 +240,12 @@ All fields, all optional:
   "inline_code": "yellow",
   "code_bg": 235,
   "code_fg": 252,
-  "code_keyword": "magenta",
-  "code_string": "green",
-  "code_comment": 244,
-  "code_literal": "yellow",
+  "code_keyword": "#c678dd",
+  "code_string": "#98c379",
+  "code_comment": "#7f8490",
+  "code_literal": "#d19a66",
+  "code_function": "#61afef",
+  "code_type": "#e5c07b",
   "qr_dark": "#102040",
   "qr_light": "#fdf6e3"
 }

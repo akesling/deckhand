@@ -152,6 +152,12 @@ pub struct ThemeConfig {
     /// Syntax highlighting: numbers and named constants.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_literal: Option<ColorSpec>,
+    /// Syntax highlighting: called functions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_function: Option<ColorSpec>,
+    /// Syntax highlighting: types, classes, constructors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_type: Option<ColorSpec>,
     /// QR code modules (default true black). Keep it darker than
     /// `qr_light` and high-contrast, or scanners will give up; light
     /// codes on dark backgrounds fail on many readers.
@@ -195,6 +201,8 @@ impl ThemeConfig {
             code_string: over.code_string.or(self.code_string),
             code_comment: over.code_comment.or(self.code_comment),
             code_literal: over.code_literal.or(self.code_literal),
+            code_function: over.code_function.or(self.code_function),
+            code_type: over.code_type.or(self.code_type),
             qr_dark: over.qr_dark.or(self.qr_dark),
             qr_light: over.qr_light.or(self.qr_light),
         }
@@ -287,6 +295,10 @@ pub struct Theme {
     pub code_comment: Color,
     /// Syntax highlighting: numbers and named constants.
     pub code_literal: Color,
+    /// Syntax highlighting: called functions.
+    pub code_function: Color,
+    /// Syntax highlighting: types, classes, constructors.
+    pub code_type: Color,
     /// QR code modules.
     pub qr_dark: Color,
     /// QR code background, quiet zone included.
@@ -323,10 +335,16 @@ impl Default for Theme {
             inline_code: Color::Yellow,
             code_bg: Color::Indexed(235),
             code_fg: Color::Indexed(252),
-            code_keyword: Color::Magenta,
-            code_string: Color::Green,
-            code_comment: Color::Indexed(244),
-            code_literal: Color::Yellow,
+            // One Dark-flavored truecolor: RGB bypasses terminal
+            // palettes entirely (the same reasoning as the indexed
+            // grays above, taken further), and xterm.js renders it
+            // faithfully on the web.
+            code_keyword: Color::Rgb(0xc6, 0x78, 0xdd),
+            code_string: Color::Rgb(0x98, 0xc3, 0x79),
+            code_comment: Color::Rgb(0x7f, 0x84, 0x90),
+            code_literal: Color::Rgb(0xd1, 0x9a, 0x66),
+            code_function: Color::Rgb(0x61, 0xaf, 0xef),
+            code_type: Color::Rgb(0xe5, 0xc0, 0x7b),
             // True black-on-white from the 256-color cube — scanners
             // want dark-on-light, and ANSI black/white are remappable.
             qr_dark: Color::Indexed(16),
@@ -456,6 +474,8 @@ impl Theme {
         color!(code_string);
         color!(code_comment);
         color!(code_literal);
+        color!(code_function);
+        color!(code_type);
         color!(qr_dark);
         color!(qr_light);
         Ok(t)

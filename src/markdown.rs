@@ -459,6 +459,8 @@ impl<'t> Renderer<'t> {
                     .fg(self.theme.code_comment)
                     .add_modifier(Modifier::ITALIC),
                 Kind::Literal => base.fg(self.theme.code_literal),
+                Kind::Function => base.fg(self.theme.code_function),
+                Kind::Type => base.fg(self.theme.code_type),
             }
         };
         let mut lines: Vec<&str> = text.split('\n').collect();
