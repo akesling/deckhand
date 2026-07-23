@@ -335,6 +335,34 @@ spawn PTYs (the web presenter) replay the real, colored output instead
 of showing a placeholder. Native presenting always runs the command
 live and ignores snapshots.
 
+## Rendering to PDF
+
+`deckhand pdf` typesets a deck to a PDF file, one page per slide,
+through the same layout engine that presents it — theming, banner
+headings, QR codes, and ASCII-art images included:
+
+```sh
+deckhand pdf talk.md                    # writes talk.pdf
+deckhand pdf deck.json -o slides.pdf --cols 100 --rows 30 --font-size 12
+```
+
+- Pages are a terminal-cell grid (`--cols` × `--rows`, default
+  100 × 30); `--font-size` (points) scales the page around it.
+- Text is real, selectable text in an embedded, subsetted DejaVu Sans
+  Mono. Box-drawing borders, block glyphs, and QR modules are drawn as
+  vector paths — borders connect seamlessly and QR codes stay
+  scannable at any zoom.
+- Colors resolve like the web presenter: xterm defaults on a dark page.
+- Slide titles become PDF bookmarks: one entry per column, deeper
+  slides nested beneath it.
+- Terminal blocks render their baked snapshots (see
+  [snapshots](#baking-in-terminal-snapshots)). A deck with
+  unsnapshotted terminals requires `--snapshots` (runs the commands
+  and captures their output — same knobs as `compile`) or
+  `--no-snapshots` (placeholders).
+- PDF export is the `pdf` cargo feature, on by default; build with
+  `--no-default-features` for a deckhand without it.
+
 ## Theming
 
 Layout, borders, and colors are configurable. Three sources, merged field

@@ -81,6 +81,44 @@ enum Cmd {
         #[arg(long)]
         snapshot_root: Option<PathBuf>,
     },
+    /// Render a deck to a PDF file, one page per slide. Terminal blocks
+    /// show their baked snapshots; decks with unsnapshotted terminals
+    /// require choosing --snapshots (runs their commands, captures the
+    /// output) or --no-snapshots
+    #[cfg(feature = "pdf")]
+    Pdf {
+        deck: String,
+        /// Write here (default: the deck's file name with .pdf)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Page grid width, in terminal columns
+        #[arg(long, default_value_t = 100)]
+        cols: u16,
+        /// Page grid height, in terminal rows
+        #[arg(long, default_value_t = 30)]
+        rows: u16,
+        /// Font size in points; with the grid, this sets the page size
+        #[arg(long, default_value_t = 10.0)]
+        font_size: f32,
+        /// Run each terminal block in a PTY and render its screen
+        /// capture (this RUNS the deck's commands — only for decks you
+        /// trust)
+        #[arg(long, conflicts_with = "no_snapshots")]
+        snapshots: bool,
+        /// Render terminal blocks without snapshots as placeholders
+        #[arg(long)]
+        no_snapshots: bool,
+        /// How long to let each command run before capturing (ms)
+        #[arg(long, default_value_t = 1500)]
+        snapshot_wait_ms: u64,
+        /// Terminal width for captures
+        #[arg(long, default_value_t = 80)]
+        snapshot_cols: u16,
+        /// Working directory for captured commands (controls the prompt
+        /// path etc.); defaults to the deck's directory
+        #[arg(long)]
+        snapshot_root: Option<PathBuf>,
+    },
 }
 
 fn default_socket() -> PathBuf {
@@ -123,6 +161,36 @@ pub fn main() -> Result<()> {
                 root: snapshot_root,
             };
             compile::run(&deck, output.as_deref(), choice, opts)
+        }
+        #[cfg(feature = "pdf")]
+        Some(Cmd::Pdf {
+            deck,
+            output,
+            cols,
+            rows,
+            font_size,
+            snapshots,
+            no_snapshots,
+            snapshot_wait_ms,
+            snapshot_cols,
+            snapshot_root,
+        }) => {
+            let opts = crate::pdf::Options {
+                cols,
+                rows,
+                font_size,
+                snapshots: match (snapshots, no_snapshots) {
+                    (true, _) => Some(true),
+                    (_, true) => Some(false),
+                    _ => None, // errors if the deck has unsnapshotted terminals
+                },
+                snapshot_opts: crate::snapshot::Options {
+                    wait: std::time::Duration::from_millis(snapshot_wait_ms),
+                    cols: snapshot_cols,
+                    root: snapshot_root,
+                },
+            };
+            crate::pdf::run(&deck, output.as_deref(), &opts)
         }
         None => match cli.deck {
             Some(deck) => present::run(

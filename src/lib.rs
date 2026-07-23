@@ -13,6 +13,7 @@
 //! deckhand talk.md            # present
 //! deckhand notes              # presenter notes, in another terminal
 //! deckhand compile deck.json  # flatten a manifest to one file
+//! deckhand pdf talk.md        # typeset to talk.pdf, one page per slide
 //! ```
 //!
 //! # The deck format, in one slide
@@ -75,10 +76,11 @@
 //! | [`ascii_image`] | markdown images → colored ASCII art |
 //! | [`banner`] | `h1_style: banner` → block-glyph headings |
 //! | [`presenter`] | shared presentation core + provider trait |
+//! | [`replay`] | snapshot-replaying terminal provider |
 //! | [`hints`] | overview quick-jump codes |
 //! | [`compile`] | flatten any deck to single-file markdown |
 //! | [`proto`] | presenter → notes-client wire format |
-//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`cli`] |
+//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`cli`], `pdf` (feature `pdf`, on by default) |
 //! | wasm-only | `web` |
 //!
 //! # Library quickstart
@@ -134,12 +136,15 @@ pub mod markdown;
 pub mod presenter;
 pub mod proto;
 pub mod qr;
+pub mod replay;
 pub mod theme;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod notes;
+#[cfg(all(not(target_arch = "wasm32"), feature = "pdf"))]
+pub mod pdf;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod present;
 #[cfg(not(target_arch = "wasm32"))]

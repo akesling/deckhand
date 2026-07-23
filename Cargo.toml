@@ -41,6 +41,18 @@ ratatui = { version = "0.29", default-features = false, features = ["crossterm",
 reqwest = "0.12"
 tokio = { version = "1", features = ["rt"] }
 
+# `pdf` feature only: `deckhand pdf` renders decks to PDF.
+miniz_oxide = { version = "0.8", optional = true }
+pdf-writer = { version = "0.13", optional = true }
+subsetter = { version = "0.2", optional = true }
+ttf-parser = { version = "0.25", optional = true }
+
+[features]
+default = ["pdf"]
+# `deckhand pdf`: render a deck to PDF (native only; a no-op for wasm
+# builds, whose target has none of these dependencies).
+pdf = ["dep:miniz_oxide", "dep:pdf-writer", "dep:subsetter", "dep:ttf-parser"]
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 
