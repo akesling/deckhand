@@ -225,8 +225,12 @@ fn http_get(url: &str) -> Result<String> {
             .expect("building tokio runtime")
     });
     let client = CLIENT.get_or_init(|| {
+        // These fetches happen before the TUI is up (or during a
+        // reload); without timeouts a hung server hangs deckhand.
         reqwest::Client::builder()
             .user_agent("deckhand")
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("building HTTP client")
     });

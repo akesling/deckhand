@@ -25,6 +25,7 @@ pub struct TermSession {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
+    reaped: bool,
     rows: u16,
     cols: u16,
 }
@@ -85,6 +86,7 @@ impl TermSession {
             writer,
             master: pair.master,
             child,
+            reaped: false,
             rows,
             cols,
         })
@@ -186,10 +188,29 @@ impl TermSession {
         self.parser.lock().unwrap().set_size(rows, cols);
     }
 
+    /// Reap the child once its output stream has closed, so commands
+    /// that finish on their own don't linger as zombies for the rest of
+    /// the presentation. No-op while the child is running (or once
+    /// reaped); cheap enough to call every frame.
+    pub fn reap(&mut self) {
+        if self.reaped || !self.exited() {
+            return;
+        }
+        if let Ok(Some(_)) = self.child.try_wait() {
+            self.reaped = true;
+        }
+    }
+
     /// Kill the child process and reap it.
     pub fn kill(&mut self) {
+        // Once reaped the pid may be reused — signaling it could hit an
+        // unrelated process.
+        if self.reaped {
+            return;
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
+        self.reaped = true;
     }
 }
 

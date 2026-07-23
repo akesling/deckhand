@@ -56,6 +56,14 @@ impl PtyProvider {
     fn allowed(&self, id: usize) -> bool {
         !self.stopped.contains(&id) && (self.eager || self.approved.contains(&id))
     }
+
+    /// Reap children whose commands have finished — including on slides
+    /// not currently shown — so they don't accumulate as zombies.
+    fn reap_exited(&mut self) {
+        for s in self.sessions.values_mut() {
+            s.reap();
+        }
+    }
 }
 
 impl TerminalProvider for PtyProvider {
@@ -270,20 +278,31 @@ fn event_loop(
             let area = f.area();
             presenter.draw(area, f.buffer_mut());
         })?;
+        presenter.provider.reap_exited();
         if event::poll(Duration::from_millis(33))? {
             let before = presenter.position();
-            match event::read()? {
-                Event::Key(k) if matches!(k.kind, KeyEventKind::Press | KeyEventKind::Repeat) => {
-                    if let Some(kp) = translate_key(&k) {
-                        presenter.on_key(kp);
+            // Drain everything pending before redrawing — a paste into a
+            // focused terminal arrives as many events, and a full frame
+            // per character would lag far behind the keyboard.
+            loop {
+                match event::read()? {
+                    Event::Key(k)
+                        if matches!(k.kind, KeyEventKind::Press | KeyEventKind::Repeat) =>
+                    {
+                        if let Some(kp) = translate_key(&k) {
+                            presenter.on_key(kp);
+                        }
                     }
-                }
-                Event::Mouse(m) => {
-                    if let Some(mm) = translate_mouse(&m) {
-                        presenter.on_mouse(mm);
+                    Event::Mouse(m) => {
+                        if let Some(mm) = translate_mouse(&m) {
+                            presenter.on_mouse(mm);
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+                if presenter.should_quit() || !event::poll(Duration::ZERO)? {
+                    break;
+                }
             }
             if presenter.position() != before {
                 broadcast(server, presenter, started_at);
