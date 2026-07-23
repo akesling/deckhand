@@ -1,12 +1,17 @@
-//! Concrete RGB values for every [`ratatui::style::Color`].
+//! Concrete RGB values for every [`ratatui::style::Color`], shared by
+//! the PDF and HTML exporters.
 //!
-//! A terminal defers color choices to the emulator's palette; a PDF has
-//! no emulator, so the exporter must pick. These values match what the
-//! web presenter shows: xterm.js defaults (the Tango palette for ANSI
-//! 0-15, the standard 6×6×6 cube and grayscale ramp for 16-255) over
-//! the site's dark surface.
+//! A terminal defers color choices to the emulator's palette; an
+//! exported document has no emulator, so the exporter must pick. These
+//! values match what the web presenter shows: xterm.js defaults (the
+//! Tango palette for ANSI 0-15, the standard 6×6×6 cube and grayscale
+//! ramp for 16-255) over the site's dark surface.
+//!
+//! [`resolve`] flattens a cell's style the same way for every
+//! exporter: concrete colors with `REVERSED` swapped and `DIM`
+//! blended, plus the attributes left for the output format to draw.
 
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 /// Default foreground — cells whose fg is [`Color::Reset`].
 pub const DEFAULT_FG: [u8; 3] = [0xd0, 0xd0, 0xd0];
@@ -84,6 +89,54 @@ pub fn blend(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
     [mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2])]
 }
 
+/// A cell's style with every terminal indirection resolved: concrete
+/// colors and the attributes an exporter still has to draw itself.
+pub struct Resolved {
+    /// Foreground, `REVERSED` and `DIM` already applied.
+    pub fg: [u8; 3],
+    /// Background; `None` when the document background already covers
+    /// it.
+    pub bg: Option<[u8; 3]>,
+    /// `BOLD`.
+    pub bold: bool,
+    /// `ITALIC`.
+    pub italic: bool,
+    /// `UNDERLINED`.
+    pub underline: bool,
+    /// `CROSSED_OUT`.
+    pub strike: bool,
+    /// `HIDDEN`: draw the background, not the glyph.
+    pub hidden: bool,
+}
+
+/// Flatten a cell's `(fg, bg, modifiers)` into concrete colors:
+/// defaults substituted, `REVERSED` swapped, `DIM` blended toward the
+/// background.
+pub fn resolve(fg: Color, bg: Color, m: Modifier) -> Resolved {
+    let mut fg = rgb(fg);
+    let mut bg = rgb(bg);
+    if m.contains(Modifier::REVERSED) {
+        let f = fg.unwrap_or(DEFAULT_FG);
+        let b = bg.unwrap_or(DEFAULT_BG);
+        (fg, bg) = (Some(b), Some(f));
+    }
+    let bg = bg.filter(|&b| b != DEFAULT_BG);
+    let effective_bg = bg.unwrap_or(DEFAULT_BG);
+    let mut fg = fg.unwrap_or(DEFAULT_FG);
+    if m.contains(Modifier::DIM) {
+        fg = blend(fg, effective_bg, 0.5);
+    }
+    Resolved {
+        fg,
+        bg,
+        bold: m.contains(Modifier::BOLD),
+        italic: m.contains(Modifier::ITALIC),
+        underline: m.contains(Modifier::UNDERLINED),
+        strike: m.contains(Modifier::CROSSED_OUT),
+        hidden: m.contains(Modifier::HIDDEN),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +155,27 @@ mod tests {
         assert_eq!(rgb(Color::Indexed(232)), Some([8, 8, 8]));
         assert_eq!(rgb(Color::Indexed(255)), Some([238, 238, 238]));
         assert_eq!(rgb(Color::Rgb(1, 2, 3)), Some([1, 2, 3]));
+    }
+
+    #[test]
+    fn resolve_applies_reverse_and_dim() {
+        let r = resolve(Color::Reset, Color::Reset, Modifier::REVERSED);
+        // Reversed default cell: fg becomes the page background, and
+        // the old default fg becomes a real background to draw.
+        assert_eq!(r.fg, DEFAULT_BG);
+        assert_eq!(r.bg, Some(DEFAULT_FG));
+
+        let plain = resolve(Color::White, Color::Reset, Modifier::empty());
+        let dim = resolve(Color::White, Color::Reset, Modifier::DIM);
+        assert_ne!(plain.fg, dim.fg);
+        assert!(!plain.bold && !plain.hidden);
+
+        let attrs = resolve(
+            Color::Reset,
+            Color::Reset,
+            Modifier::BOLD | Modifier::ITALIC | Modifier::UNDERLINED,
+        );
+        assert!(attrs.bold && attrs.italic && attrs.underline && !attrs.strike);
     }
 
     #[test]

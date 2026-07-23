@@ -176,6 +176,27 @@ impl Deck {
             .collect()
     }
 
+    /// Like [`Deck::terminal_commands`], but only blocks with no baked
+    /// snapshot — the ones an exporter can't replay and would have to
+    /// either run or show as placeholders.
+    pub fn unsnapshotted_commands(&self) -> Vec<String> {
+        self.columns
+            .iter()
+            .flat_map(|c| &c.slides)
+            .flat_map(|s| s.leaf_segments())
+            .filter_map(|seg| match seg {
+                Segment::Terminal(b) if b.snapshot.is_none() => Some(
+                    b.command
+                        .as_deref()
+                        .and_then(|c| c.lines().next())
+                        .unwrap_or("shell")
+                        .to_string(),
+                ),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Every terminal block in the deck, in deck order, rows included.
     pub fn terminals_mut(&mut self) -> Vec<&mut TermBlock> {
         fn walk<'s>(segments: &'s mut [Segment], out: &mut Vec<&'s mut TermBlock>) {

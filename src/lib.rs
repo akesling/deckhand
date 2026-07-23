@@ -10,10 +10,11 @@
 //! Most people want the binary:
 //!
 //! ```text
-//! deckhand talk.md            # present
-//! deckhand notes              # presenter notes, in another terminal
-//! deckhand compile deck.json  # flatten a manifest to one file
-//! deckhand pdf talk.md        # typeset to talk.pdf, one page per slide
+//! deckhand talk.md                       # present
+//! deckhand notes                         # presenter notes, in another terminal
+//! deckhand compile deck.json             # flatten a manifest to one file
+//! deckhand compile talk.md -o talk.pdf   # typeset a PDF, one page per slide
+//! deckhand compile talk.md -o talk.html  # a self-contained static page
 //! ```
 //!
 //! # The deck format, in one slide
@@ -77,10 +78,11 @@
 //! | [`banner`] | `h1_style: banner` → block-glyph headings |
 //! | [`presenter`] | shared presentation core + provider trait |
 //! | [`replay`] | snapshot-replaying terminal provider |
+//! | [`palette`] | concrete RGB values for exported documents |
 //! | [`hints`] | overview quick-jump codes |
 //! | [`compile`] | flatten any deck to single-file markdown |
 //! | [`proto`] | presenter → notes-client wire format |
-//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`cli`], `pdf` (feature `pdf`, on by default) |
+//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`cli`], `pdf`/`html` (same-named features, on by default) |
 //! | wasm-only | `web` |
 //!
 //! # Library quickstart
@@ -133,6 +135,7 @@ pub mod deck;
 pub mod highlight;
 pub mod hints;
 pub mod markdown;
+pub mod palette;
 pub mod presenter;
 pub mod proto;
 pub mod qr;
@@ -141,6 +144,8 @@ pub mod theme;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
+#[cfg(all(not(target_arch = "wasm32"), feature = "html"))]
+pub mod html;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod notes;
 #[cfg(all(not(target_arch = "wasm32"), feature = "pdf"))]

@@ -296,8 +296,11 @@ deckhand compile https://gist.github.com/alex/abc123 -o talk.md
 
 ### Compiling a manifest to one file
 
-`deckhand compile` flattens a JSON deck into a single markdown file that
-presents identically — handy for sharing a talk as one artifact:
+`deckhand compile` turns a deck into a single artifact. The default
+format flattens a JSON deck into one markdown file that presents
+identically — handy for sharing a talk (the output format follows
+`-o`'s extension; see [Exporting](#exporting-pdf-and-html) for
+`.pdf`/`.html`):
 
 ```sh
 deckhand compile deck.json -o talk.md
@@ -335,33 +338,44 @@ spawn PTYs (the web presenter) replay the real, colored output instead
 of showing a placeholder. Native presenting always runs the command
 live and ignores snapshots.
 
-## Rendering to PDF
+## Exporting: PDF and HTML
 
-`deckhand pdf` typesets a deck to a PDF file, one page per slide,
-through the same layout engine that presents it — theming, banner
-headings, QR codes, and ASCII-art images included:
+`deckhand compile` also renders a deck through the same layout engine
+that presents it — theming, banner headings, QR codes, and ASCII-art
+images included — to a **PDF** (one page per slide) or a **single
+self-contained static HTML page**. The `-o` extension picks the
+format (or force one with `--to md|pdf|html`):
 
 ```sh
-deckhand pdf talk.md                    # writes talk.pdf
-deckhand pdf deck.json -o slides.pdf --cols 100 --rows 30 --font-size 12
+deckhand compile talk.md -o talk.pdf
+deckhand compile talk.md -o talk.html
+deckhand compile deck.json -o slides.pdf --cols 100 --rows 30 --font-size 12
 ```
 
-- Pages are a terminal-cell grid (`--cols` × `--rows`, default
-  100 × 30); `--font-size` (points) scales the page around it.
-- Text is real, selectable text in an embedded, subsetted DejaVu Sans
-  Mono. Box-drawing borders, block glyphs, and QR modules are drawn as
-  vector paths — borders connect seamlessly and QR codes stay
-  scannable at any zoom.
+Both formats:
+
+- Slides are a terminal-cell grid (`--cols` × `--rows`, default
+  100 × 30).
 - Colors resolve like the web presenter: xterm defaults on a dark page.
-- Slide titles become PDF bookmarks: one entry per column, deeper
-  slides nested beneath it.
 - Terminal blocks render their baked snapshots (see
   [snapshots](#baking-in-terminal-snapshots)). A deck with
   unsnapshotted terminals requires `--snapshots` (runs the commands
-  and captures their output — same knobs as `compile`) or
-  `--no-snapshots` (placeholders).
-- PDF export is the `pdf` cargo feature, on by default; build with
-  `--no-default-features` for a deckhand without it.
+  and captures their output) or `--no-snapshots` (placeholders).
+- Each is a cargo feature (`pdf`, `html`), on by default; build with
+  `--no-default-features` for a deckhand without them.
+
+**PDF**: real, selectable text in an embedded, subsetted DejaVu Sans
+Mono — box-drawing borders, block glyphs, and QR modules are drawn as
+vector paths, so borders connect seamlessly and QR codes stay
+scannable at any zoom. `--font-size` (points) scales the page around
+the grid. Slide titles become PDF bookmarks: one entry per column,
+deeper slides nested beneath it.
+
+**HTML**: one file, no external assets, no wasm — each slide is a
+`<pre>` of styled text. Arrow keys / hjkl / space walk the same 2-D
+grid as presenting (the URL hash tracks `#col.row`), `f` goes
+fullscreen, text scales to fit the window, and printing lays slides
+out one per page.
 
 ## Theming
 

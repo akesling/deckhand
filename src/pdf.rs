@@ -1,4 +1,5 @@
-//! `deckhand pdf`: render a deck to a PDF file, one page per slide.
+//! `deckhand compile -o talk.pdf`: render a deck to a PDF file, one
+//! page per slide.
 //!
 //! Every slide is drawn by the shared [`crate::presenter::Presenter`]
 //! into an offscreen cell grid — the exact layout, theming, and chrome
@@ -19,23 +20,22 @@
 //! via [`crate::replay::SnapshotProvider`]; decks with unsnapshotted
 //! terminals require choosing `--snapshots` (captures now, running the
 //! deck's commands) or `--no-snapshots` (placeholders) — the same
-//! consent rule as `deckhand compile`.
+//! consent rule as every other compile format.
 
 mod font;
 mod glyphs;
-mod palette;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Modifier;
 use unicode_width::UnicodeWidthStr;
 
-use crate::deck::{Deck, Segment};
+use crate::deck::Deck;
+use crate::palette::{self, Resolved};
 use crate::presenter::{Presenter, TerminalProvider};
 use crate::replay::SnapshotProvider;
 use crate::{source, theme};
@@ -79,7 +79,7 @@ pub fn run(input: &str, output: Option<&Path>, opts: &Options) -> Result<()> {
         base_dir,
     } = source::load(input)?;
 
-    let missing = missing_snapshot_commands(&deck);
+    let missing = deck.unsnapshotted_commands();
     if !missing.is_empty() {
         match opts.snapshots {
             Some(true) => {
@@ -108,7 +108,7 @@ pub fn run(input: &str, output: Option<&Path>, opts: &Options) -> Result<()> {
     let bytes = render(&mut presenter, opts)?;
     let path = match output {
         Some(p) => p.to_path_buf(),
-        None => default_output(input),
+        None => source::output_name(input, "pdf"),
     };
     std::fs::write(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
     eprintln!(
@@ -117,42 +117,6 @@ pub fn run(input: &str, output: Option<&Path>, opts: &Options) -> Result<()> {
         presenter.deck().flat().len()
     );
     Ok(())
-}
-
-/// Terminal blocks that would render as placeholders: their one-line
-/// commands, for the consent error.
-fn missing_snapshot_commands(deck: &Deck) -> Vec<String> {
-    deck.columns
-        .iter()
-        .flat_map(|c| &c.slides)
-        .flat_map(|s| s.leaf_segments())
-        .filter_map(|seg| match seg {
-            Segment::Terminal(b) if b.snapshot.is_none() => Some(
-                b.command
-                    .as_deref()
-                    .and_then(|c| c.lines().next())
-                    .unwrap_or("shell")
-                    .to_string(),
-            ),
-            _ => None,
-        })
-        .collect()
-}
-
-/// `talk.md` → `talk.pdf`; URLs use their last path segment; anything
-/// unusable falls back to `deck.pdf`.
-fn default_output(input: &str) -> PathBuf {
-    let name = input
-        .trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or(input);
-    let stem = match name.rsplit_once('.') {
-        Some((s, _)) if !s.is_empty() => s,
-        _ => name,
-    };
-    let stem = if stem.is_empty() { "deck" } else { stem };
-    PathBuf::from(format!("{stem}.pdf"))
 }
 
 /// Render every slide of an already-built presenter to PDF bytes.
@@ -198,50 +162,6 @@ pub fn render<P: TerminalProvider>(
         rows,
         opts.font_size,
     )
-}
-
-// ------------------------------------------------------------ styling
-
-/// A cell's style with every terminal indirection resolved: concrete
-/// colors, the face to use, and which decorations to draw.
-struct Resolved {
-    fg: [u8; 3],
-    /// `None`: the page background already covers it.
-    bg: Option<[u8; 3]>,
-    face: FaceId,
-    italic: bool,
-    underline: bool,
-    strike: bool,
-    hidden: bool,
-}
-
-fn resolve(fg: ratatui::style::Color, bg: ratatui::style::Color, m: Modifier) -> Resolved {
-    let mut fg = palette::rgb(fg);
-    let mut bg = palette::rgb(bg);
-    if m.contains(Modifier::REVERSED) {
-        let f = fg.unwrap_or(palette::DEFAULT_FG);
-        let b = bg.unwrap_or(palette::DEFAULT_BG);
-        (fg, bg) = (Some(b), Some(f));
-    }
-    let bg = bg.filter(|&b| b != palette::DEFAULT_BG);
-    let effective_bg = bg.unwrap_or(palette::DEFAULT_BG);
-    let mut fg = fg.unwrap_or(palette::DEFAULT_FG);
-    if m.contains(Modifier::DIM) {
-        fg = palette::blend(fg, effective_bg, 0.5);
-    }
-    Resolved {
-        fg,
-        bg,
-        face: if m.contains(Modifier::BOLD) {
-            FaceId::Bold
-        } else {
-            FaceId::Regular
-        },
-        italic: m.contains(Modifier::ITALIC),
-        underline: m.contains(Modifier::UNDERLINED),
-        strike: m.contains(Modifier::CROSSED_OUT),
-        hidden: m.contains(Modifier::HIDDEN),
-    }
 }
 
 // ----------------------------------------------------------- emission
@@ -348,7 +268,12 @@ fn emit_page(
             // is the best a font-shaping-free typesetter can do.
             let chr = symbol.chars().next().unwrap_or(' ');
             let width = (symbol.width().max(1) as u16).min(cols - x);
-            cells.push((x, width, chr, resolve(cell.fg, cell.bg, cell.modifier)));
+            cells.push((
+                x,
+                width,
+                chr,
+                palette::resolve(cell.fg, cell.bg, cell.modifier),
+            ));
             x += width;
         }
 
@@ -457,16 +382,21 @@ fn emit_page(
                 paths.push_str(&probe);
                 continue;
             }
-            let Some(gid) = fonts.face_mut(r.face).glyph(*chr) else {
+            let face = if r.bold {
+                FaceId::Bold
+            } else {
+                FaceId::Regular
+            };
+            let Some(gid) = fonts.face_mut(face).glyph(*chr) else {
                 // No coverage in the embedded font: an empty cell is
                 // less misleading than a wrong glyph.
                 flush_run(&mut run, &mut text);
                 continue;
             };
-            let standard = *width == 1 && fonts.face_mut(r.face).standard_advance(gid, &m);
+            let standard = *width == 1 && fonts.face_mut(face).standard_advance(gid, &m);
             let extends = matches!(
                 &run,
-                Some(p) if p.face == r.face
+                Some(p) if p.face == face
                     && p.color == r.fg
                     && p.italic == r.italic
                     && p.col + p.gids.len() as u16 == *x
@@ -476,7 +406,7 @@ fn emit_page(
             } else {
                 flush_run(&mut run, &mut text);
                 run = Some(Run {
-                    face: r.face,
+                    face,
                     color: r.fg,
                     italic: r.italic,
                     col: *x,
@@ -815,20 +745,8 @@ mod tests {
     }
 
     #[test]
-    fn default_output_names() {
-        assert_eq!(default_output("talk.md"), PathBuf::from("talk.pdf"));
-        assert_eq!(default_output("slides/talk.md"), PathBuf::from("talk.pdf"));
-        assert_eq!(
-            default_output("https://example.com/decks/talk.md"),
-            PathBuf::from("talk.pdf")
-        );
-        assert_eq!(default_output("deck.json"), PathBuf::from("deck.pdf"));
-        assert_eq!(default_output(""), PathBuf::from("deck.pdf"));
-    }
-
-    #[test]
     fn snapshot_terminals_need_no_choice() {
-        use crate::deck::TermSnapshot;
+        use crate::deck::{Segment, TermSnapshot};
         let mut deck = deck::parse("```terminal rows=4\nls\n```\n", "t").unwrap();
         let Segment::Terminal(block) = &mut deck.columns[0].slides[0].segments[0] else {
             panic!("expected terminal");
@@ -838,7 +756,7 @@ mod tests {
             rows: 4,
             data: b"\x1b[1;1Hsnapped \x1b[31mred\x1b[0m".to_vec(),
         });
-        assert!(missing_snapshot_commands(&deck).is_empty());
+        assert!(deck.unsnapshotted_commands().is_empty());
 
         let mut presenter = Presenter::new(deck, vec![], SnapshotProvider::default()).unwrap();
         let bytes = render(&mut presenter, &Options::default()).unwrap();

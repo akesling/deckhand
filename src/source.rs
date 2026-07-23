@@ -79,6 +79,24 @@ pub fn watch_paths(input: &str) -> Vec<PathBuf> {
     out
 }
 
+/// Default output path for an exporter: the deck's file name with its
+/// extension swapped for `ext`, in the current directory — `talk.md` →
+/// `talk.<ext>`. URLs use their last path segment; anything unusable
+/// falls back to `deck.<ext>`.
+pub fn output_name(input: &str, ext: &str) -> PathBuf {
+    let name = input
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(input);
+    let stem = match name.rsplit_once('.') {
+        Some((s, _)) if !s.is_empty() => s,
+        _ => name,
+    };
+    let stem = if stem.is_empty() { "deck" } else { stem };
+    PathBuf::from(format!("{stem}.{ext}"))
+}
+
 enum Remote {
     /// Relative paths join onto this URL prefix.
     Http { base: String },
@@ -230,6 +248,21 @@ fn http_get(url: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_names() {
+        assert_eq!(output_name("talk.md", "pdf"), PathBuf::from("talk.pdf"));
+        assert_eq!(
+            output_name("slides/talk.md", "html"),
+            PathBuf::from("talk.html")
+        );
+        assert_eq!(
+            output_name("https://example.com/decks/talk.md", "pdf"),
+            PathBuf::from("talk.pdf")
+        );
+        assert_eq!(output_name("deck.json", "pdf"), PathBuf::from("deck.pdf"));
+        assert_eq!(output_name("", "html"), PathBuf::from("deck.html"));
+    }
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
