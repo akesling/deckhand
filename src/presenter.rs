@@ -429,11 +429,95 @@ fn resolve_slide_themes(
     Ok(out)
 }
 
+/// One search result: a slide plus where the query hit, for
+/// highlighting in the results list.
+struct SearchMatch {
+    pos: (usize, usize),
+    title: String,
+    /// Byte range of the hit in `title`, when the title matched.
+    title_hit: Option<(usize, usize)>,
+    /// First matching body line (trimmed) and the hit's byte range.
+    snippet: Option<(String, (usize, usize))>,
+}
+
+/// Byte range of the first case-insensitive occurrence of `needle` in
+/// `haystack`, comparing per-char lowercase forms so the range is
+/// always on char boundaries of the original string.
+fn find_ci(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+    let needle: Vec<char> = needle.chars().flat_map(char::to_lowercase).collect();
+    if needle.is_empty() {
+        return Some((0, 0));
+    }
+    for (start, _) in haystack.char_indices() {
+        let mut matched = 0;
+        for (i, c) in haystack[start..].char_indices() {
+            let mut ok = true;
+            for lc in c.to_lowercase() {
+                if matched < needle.len() && lc == needle[matched] {
+                    matched += 1;
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+            if !ok {
+                break;
+            }
+            if matched == needle.len() {
+                return Some((start, start + i + c.len_utf8()));
+            }
+        }
+    }
+    None
+}
+
+/// Re-cut a snippet whose hit sits deep in the line so the highlight
+/// stays visible once the paragraph clips the tail: keep a little
+/// context before the match behind a `…`.
+fn clip_snippet(line: &str, range: (usize, usize)) -> (String, (usize, usize)) {
+    const KEEP_BYTES: usize = 40;
+    const LEAD_CHARS: usize = 16;
+    if range.0 <= KEEP_BYTES {
+        return (line.to_string(), range);
+    }
+    let starts: Vec<usize> = line.char_indices().map(|(i, _)| i).collect();
+    let hit = starts.partition_point(|&i| i < range.0);
+    let cut = starts[hit.saturating_sub(LEAD_CHARS)];
+    let shift = |b: usize| b - cut + "…".len();
+    (
+        format!("…{}", &line[cut..]),
+        (shift(range.0), shift(range.1)),
+    )
+}
+
+/// `text` as spans with the hit range (if any) restyled — falls back
+/// to one plain span if the range isn't on char boundaries.
+fn split_hit(
+    text: &str,
+    range: Option<(usize, usize)>,
+    base: Style,
+    hit: Style,
+) -> Vec<Span<'static>> {
+    match range {
+        Some((s, e))
+            if s < e && e <= text.len() && text.is_char_boundary(s) && text.is_char_boundary(e) =>
+        {
+            vec![
+                Span::styled(text[..s].to_string(), base),
+                Span::styled(text[s..e].to_string(), hit),
+                Span::styled(text[e..].to_string(), base),
+            ]
+        }
+        _ => vec![Span::styled(text.to_string(), base)],
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Slide,
     Overview { sel: (usize, usize) },
     Help,
+    Search { sel: usize },
 }
 
 /// The shared presentation state machine and renderer. See the
@@ -455,6 +539,7 @@ pub struct Presenter<P: TerminalProvider> {
     overview_rects: Vec<((usize, usize), Rect)>,
     status: Option<String>,
     jump_input: String,
+    search_input: String,
     /// A disabled terminal awaiting the presenter's `y` to run.
     pending_enable: Option<usize>,
     /// Extra line shown at the bottom of the help overlay (the native
@@ -486,6 +571,7 @@ impl<P: TerminalProvider> Presenter<P> {
             overview_rects: Vec::new(),
             status: None,
             jump_input: String::new(),
+            search_input: String::new(),
             pending_enable: None,
             help_footer: None,
             quit: false,
@@ -648,6 +734,7 @@ impl<P: TerminalProvider> Presenter<P> {
         match self.mode {
             Mode::Help => self.mode = Mode::Slide,
             Mode::Overview { sel } => self.on_key_overview(key, sel),
+            Mode::Search { sel } => self.on_key_search(key, sel),
             Mode::Slide => self.on_key_slide(key),
         }
     }
@@ -693,6 +780,10 @@ impl<P: TerminalProvider> Presenter<P> {
                 self.mode = Mode::Overview {
                     sel: (self.col, self.row),
                 };
+            }
+            Key::Char('/') => {
+                self.search_input.clear();
+                self.mode = Mode::Search { sel: 0 };
             }
             Key::Char('?') => self.mode = Mode::Help,
             Key::Enter | Key::Char('t') => self.focus_terminal(),
@@ -851,6 +942,97 @@ impl<P: TerminalProvider> Presenter<P> {
         self.mode = Mode::Overview { sel: (c, r) };
     }
 
+    fn on_key_search(&mut self, key: KeyPress, sel: usize) {
+        let count = self.search_matches().len();
+        let clamp = |s: usize| s.min(count.saturating_sub(1));
+        match key.key {
+            Key::Char('c') if key.ctrl => self.quit = true,
+            Key::Esc => self.mode = Mode::Slide,
+            Key::Enter => {
+                if count > 0 {
+                    let (c, r) = self.search_matches()[clamp(sel)].pos;
+                    self.mode = Mode::Slide;
+                    self.goto(c, r);
+                }
+            }
+            Key::Backspace => {
+                if self.search_input.pop().is_none() {
+                    self.mode = Mode::Slide;
+                } else {
+                    self.mode = Mode::Search { sel: 0 };
+                }
+            }
+            Key::Tab if key.shift => {
+                self.mode = Mode::Search {
+                    sel: sel.saturating_sub(1),
+                }
+            }
+            Key::Down | Key::Tab => {
+                self.mode = Mode::Search {
+                    sel: clamp(sel + 1),
+                }
+            }
+            Key::Up | Key::BackTab => {
+                self.mode = Mode::Search {
+                    sel: sel.saturating_sub(1),
+                }
+            }
+            Key::Char('n') if key.ctrl => {
+                self.mode = Mode::Search {
+                    sel: clamp(sel + 1),
+                }
+            }
+            Key::Char('p') if key.ctrl => {
+                self.mode = Mode::Search {
+                    sel: sel.saturating_sub(1),
+                }
+            }
+            Key::Char(ch) if !key.ctrl && !key.alt => {
+                self.search_input.push(ch);
+                self.mode = Mode::Search { sel: 0 };
+            }
+            _ => {}
+        }
+    }
+
+    /// Slides matching the current query (case-insensitive substring
+    /// over [`Slide::search_text`]), in traversal order. An empty query
+    /// matches every slide, so `/` doubles as a title picker.
+    fn search_matches(&self) -> Vec<SearchMatch> {
+        let query = self.search_input.as_str();
+        let mut out = Vec::new();
+        for (c, r) in self.deck.flat() {
+            let slide = self.deck.slide(c, r);
+            if query.is_empty() {
+                out.push(SearchMatch {
+                    pos: (c, r),
+                    title: slide.title.clone(),
+                    title_hit: None,
+                    snippet: None,
+                });
+                continue;
+            }
+            let title_hit = find_ci(&slide.title, query);
+            let text = slide.search_text();
+            let snippet = text
+                .lines()
+                .skip(1)
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .find_map(|l| find_ci(l, query).map(|range| clip_snippet(l, range)));
+            if title_hit.is_none() && snippet.is_none() {
+                continue;
+            }
+            out.push(SearchMatch {
+                pos: (c, r),
+                title: slide.title.clone(),
+                title_hit,
+                snippet,
+            });
+        }
+        out
+    }
+
     /// Whether a terminal lies under (x, y) on the current slide — the
     /// web front end asks before claiming wheel events for the deck.
     pub fn terminal_at(&self, x: u16, y: u16) -> bool {
@@ -872,7 +1054,7 @@ impl<P: TerminalProvider> Presenter<P> {
                 .map(|(id, _)| *id)
         };
         match self.mode {
-            Mode::Help => {
+            Mode::Help | Mode::Search { .. } => {
                 if m.action == MouseAction::LeftClick {
                     self.mode = Mode::Slide;
                 }
@@ -957,6 +1139,9 @@ impl<P: TerminalProvider> Presenter<P> {
         }
         if self.mode == Mode::Help {
             self.draw_help(content, buf);
+        }
+        if let Mode::Search { sel } = self.mode {
+            self.draw_search(content, buf, sel);
         }
         self.draw_status(status, buf);
     }
@@ -1489,6 +1674,7 @@ impl<P: TerminalProvider> Presenter<P> {
         lines.extend([
             Line::from(Span::styled(" modes", dim)),
             row("o", "overview (type a slide's code to jump)"),
+            row("/", "search slides (type to filter, ↵ jumps)"),
             row("?", "this help"),
             row("q", "quit"),
         ]);
@@ -1515,6 +1701,73 @@ impl<P: TerminalProvider> Presenter<P> {
                     .border_type(self.theme.border_type)
                     .border_style(Style::default().fg(self.theme.accent))
                     .title(" help "),
+            )
+            .render(rect, buf);
+    }
+
+    fn draw_search(&self, area: Rect, buf: &mut Buffer, sel: usize) {
+        let matches = self.search_matches();
+        let sel = sel.min(matches.len().saturating_sub(1));
+        let dim = Style::default().fg(self.theme.muted);
+        let accent = Style::default()
+            .fg(self.theme.accent)
+            .add_modifier(Modifier::BOLD);
+        let hit = Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD);
+
+        let summary = if matches.is_empty() {
+            "  no matches · esc closes".to_string()
+        } else {
+            let n = matches.len();
+            format!("  {n} match{} · ↵ jumps", if n == 1 { "" } else { "es" })
+        };
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled(format!(" /{}", self.search_input), accent),
+                Span::styled("▏", Style::default().fg(self.theme.accent)),
+                Span::styled(summary, dim),
+            ]),
+            Line::default(),
+        ];
+
+        let visible = (area.height.saturating_sub(4) as usize).min(12);
+        let offset = viewport_offset(sel, matches.len(), visible.max(1));
+        for (i, m) in matches.iter().enumerate().skip(offset).take(visible) {
+            let marker = if i == sel { " ▸ " } else { "   " };
+            let title_base = if i == sel {
+                accent
+            } else {
+                Style::default().add_modifier(Modifier::BOLD)
+            };
+            let mut spans = vec![
+                Span::styled(marker.to_string(), accent),
+                Span::styled(format!("{}.{}  ", m.pos.0 + 1, m.pos.1 + 1), dim),
+            ];
+            spans.extend(split_hit(&m.title, m.title_hit, title_base, hit));
+            if let Some((snippet, range)) = &m.snippet {
+                spans.push(Span::styled(" — ".to_string(), dim));
+                spans.extend(split_hit(snippet, Some(*range), dim, hit));
+            }
+            lines.push(Line::from(spans));
+        }
+
+        let w = 72.min(area.width);
+        let h = (lines.len() as u16 + 2).min(area.height);
+        let rect = Rect {
+            x: area.x + (area.width - w) / 2,
+            y: area.y + (area.height - h) / 2,
+            width: w,
+            height: h,
+        };
+        Clear.render(rect, buf);
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(self.theme.border_type)
+                    .border_style(Style::default().fg(self.theme.accent))
+                    .title(" search "),
             )
             .render(rect, buf);
     }
@@ -1598,6 +1851,57 @@ mod tests {
         assert_eq!(p.position(), (1, 0));
         p.on_key(KeyPress::plain(Key::Char('G')));
         assert_eq!(p.position(), (2, 0));
+    }
+
+    #[test]
+    fn search_jumps_to_match() {
+        let mut p = presenter();
+        for key in ['/', 'b', '2'] {
+            p.on_key(KeyPress::plain(Key::Char(key)));
+        }
+        p.on_key(KeyPress::plain(Key::Enter));
+        assert_eq!(p.position(), (1, 1));
+    }
+
+    #[test]
+    fn search_esc_cancels_and_restores_slide_mode() {
+        let mut p = presenter();
+        for key in ['/', 'z'] {
+            p.on_key(KeyPress::plain(Key::Char(key)));
+        }
+        p.on_key(KeyPress::plain(Key::Esc));
+        assert_eq!(p.position(), (0, 0));
+        // Back in slide mode: space navigates again.
+        p.on_key(KeyPress::plain(Key::Char(' ')));
+        assert_eq!(p.position(), (1, 0));
+    }
+
+    #[test]
+    fn empty_search_lists_all_slides_as_picker() {
+        let mut p = presenter();
+        p.on_key(KeyPress::plain(Key::Char('/')));
+        p.on_key(KeyPress::plain(Key::Down));
+        p.on_key(KeyPress::plain(Key::Down));
+        p.on_key(KeyPress::plain(Key::Enter));
+        // Third entry in traversal order: (0,0), (1,0), (1,1), …
+        assert_eq!(p.position(), (1, 1));
+    }
+
+    #[test]
+    fn find_ci_matches_case_insensitively_on_byte_ranges() {
+        assert_eq!(find_ci("Hello World", "world"), Some((6, 11)));
+        assert_eq!(find_ci("Hello", "xyz"), None);
+        // Multibyte haystack before the hit keeps ranges on boundaries.
+        assert_eq!(find_ci("héllo wörld", "WÖR"), Some((7, 11)));
+        assert_eq!(find_ci("abc", ""), Some((0, 0)));
+    }
+
+    #[test]
+    fn clip_snippet_keeps_deep_hits_visible() {
+        let line = format!("{}needle after", "x".repeat(60));
+        let (clipped, (s, e)) = clip_snippet(&line, (60, 66));
+        assert!(clipped.starts_with('…'));
+        assert_eq!(&clipped[s..e], "needle");
     }
 
     #[test]

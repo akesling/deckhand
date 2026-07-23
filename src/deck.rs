@@ -270,6 +270,33 @@ impl Slide {
             .collect()
     }
 
+    /// Plain text to match searches against: the title, then per
+    /// segment its markdown source, terminal command, QR payload, or
+    /// image alt/path, then the presenter notes — newline-joined.
+    pub fn search_text(&self) -> String {
+        let mut out = self.title.clone();
+        let mut push = |s: &str| {
+            if !s.is_empty() {
+                out.push('\n');
+                out.push_str(s);
+            }
+        };
+        for seg in self.leaf_segments() {
+            match seg {
+                Segment::Markdown(src) => push(src),
+                Segment::Terminal(t) => push(t.command.as_deref().unwrap_or("")),
+                Segment::Qr(q) => push(&q.data),
+                Segment::Image(img) => {
+                    push(&img.alt);
+                    push(&img.path);
+                }
+                Segment::Row(_) => {}
+            }
+        }
+        push(&self.notes);
+        out
+    }
+
     /// This slide's segments with row cells flattened in, left to
     /// right — for walkers that care about content, not layout.
     pub fn leaf_segments(&self) -> impl Iterator<Item = &Segment> {

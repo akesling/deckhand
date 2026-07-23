@@ -252,6 +252,7 @@ with `--no-watch`. Remote decks aren't watched.
 | `shift-space`, `backspace`, `p` | previous slide |
 | `g`, `G` | first / last column |
 | `o` | overview grid — each slide shows a short code; type it to jump (or `hjkl` + `enter`, or click) |
+| `/` | search slides — type to filter (titles, body, notes, commands), `↓`/`↑` select, `enter` jumps, `esc` closes |
 | `1`-`9` | select a terminal pane (marked with `▸`) |
 | `t`, `enter` | run (after a `y` confirmation) / focus the selected terminal |
 | `Ctrl-q` | release terminal focus |
