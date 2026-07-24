@@ -79,11 +79,19 @@ defined in `eleventy.config.js`).
 ## Deploy & versioning
 
 Releases (tag pushes, cut by `scripts/release.sh`) trigger the Release
-workflow, which builds the site and runs `scripts/deploy-site.sh`:
-`wrangler pages deploy` to the Cloudflare Pages project — once to
-production, and once under the tag's branch alias (`v0.1.0` →
-`v0-1-0.deckhand-sh.pages.dev`), which keeps that release's site up
-forever.
+workflow, which runs `scripts/deploy-site.sh`: a **clean, validated
+build** (`scripts/build-site.sh` — a deploy can never ship a stale
+`_site/`), then `wrangler pages deploy` to the Cloudflare Pages
+project — once to production, and once under the tag's branch alias
+(`v0.1.0` → `v0-1-0.deckhand-sh.pages.dev`), which keeps that
+release's site up forever.
+
+Everything a deploy produces is verifiable locally first:
+`scripts/check.sh` generates and validates `versions.json` (via
+`scripts/gen-versions.sh` — completeness against tags and
+`versions-known.txt` is asserted, not eyeballed), and serving a built
+`site/_site` on localhost shows the real footer picker reading the
+local manifest.
 
 `scripts/build-site.sh` bakes the crate version into the footer's
 version picker and generates `versions.json` (all release tags, plus

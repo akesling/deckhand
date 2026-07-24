@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Publish site/_site to Cloudflare Pages, twice: once under the
+# Deploy the site to Cloudflare Pages: a clean, validated build
+# (scripts/build-site.sh — wasm, TS check, 11ty, versions.json with
+# its own consistency checks), then publish, twice: once under the
 # release's branch alias (v0.1.0 → v0-1-0.<project>.pages.dev — the
 # URLs versions.json points old releases at) and then to production.
-# Build first with scripts/build-site.sh; this script only deploys.
+# Deploys never ship a stale site/_site.
 #
 # Auth: CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID, in CI (repo
 # secrets) and locally alike. Use a custom API token scoped to
@@ -24,10 +26,10 @@ if [ -z "${_tag}" ]; then
   echo "  touching production — for backfilling old versions" >&2
   exit 2
 fi
-if [ ! -d "${_site}/_site" ]; then
-  echo "site/_site not found — run scripts/build-site.sh first" >&2
-  exit 1
-fi
+# Never deploy a stale artifact: build fresh, every time. The build
+# validates itself (TS check, versions.json consistency).
+echo "== clean build"
+"${_root}/scripts/build-site.sh"
 
 _project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
 cd "${_site}" || exit 1

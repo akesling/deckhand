@@ -16,6 +16,13 @@ RUSTFLAGS="-D warnings" RUSTDOCFLAGS="-D warnings" cargo test --locked
 echo "== cargo doc"
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --document-private-items --quiet
 
+# The site's version manifest, generated and validated without
+# deploying anything — a stale or incomplete versions.json fails here.
+echo "== versions manifest"
+_tmp="$(mktemp -d)"
+"${_root}/scripts/gen-versions.sh" "${_tmp}/versions.json"
+rm -rf "${_tmp}"
+
 # The TS sources import the generated wasm bindings, so the check only
 # means something once those exist. CI runs it in the site job (via
 # build-site.sh), which builds the wasm first.

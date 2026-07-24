@@ -521,7 +521,7 @@ Repo tooling lives in `scripts/` (each self-contained and executable):
 | `scripts/build-site.sh` | full site build → `site/_site/` |
 | `scripts/dev.sh` | dev server: 11ty live reload + `bun --watch` + wasm rebuild on Rust changes |
 | `scripts/publish.sh` | crates.io publish from a pristine clone; dry-run by default (`--i-know-what-i-am-doing` to publish) |
-| `scripts/deploy-site.sh` | deploy `site/_site/` to Cloudflare Pages (production + a permanent per-release alias) |
+| `scripts/deploy-site.sh` | clean build, then deploy to Cloudflare Pages (production + a permanent per-release alias) |
 | `scripts/release.sh` | cut a release: checks + site build + dry-run, then tag `v<version>`, push (CI deploys the site), and publish to crates.io; dry-run by default |
 
 CI (`.github/workflows/ci.yml`) runs the same gates on PRs and merges to

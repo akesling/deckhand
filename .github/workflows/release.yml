@@ -112,9 +112,10 @@ jobs:
       - name: install site deps
         working-directory: site
         run: bun install --frozen-lockfile
-      - name: build site (wasm + ts + 11ty)
-        run: ./scripts/build-site.sh
-      - name: deploy to Cloudflare Pages
+      - name: build + deploy to Cloudflare Pages
+        # deploy-site.sh does its own clean, validated build — the
+        # same path as a local deploy, so local verification means
+        # something.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -3,7 +3,13 @@
 // pages.dev branch aliases can read it too) lists every release.
 // Picking one jumps to the same path on that release's deployment.
 
-const VERSIONS_URL = "https://deckhand.sh/versions.json";
+// Local previews (a static server over site/_site) read their own
+// freshly generated manifest, so the picker is verifiable without
+// deploying; deployed pages — branch aliases included — read
+// production's, which lists every release.
+const VERSIONS_URL = ["localhost", "127.0.0.1"].includes(location.hostname)
+  ? "/versions.json"
+  : "https://deckhand.sh/versions.json";
 
 interface VersionEntry {
   version: string;

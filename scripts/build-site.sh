@@ -23,49 +23,12 @@ cd "${_site}" || exit 1
 bun run check
 mkdir -p dist/js
 bun run build:ts
+# 11ty doesn't delete removed outputs — always build into a clean dir.
+rm -rf _site
 # The version labels the footer picker (eleventy.config.js reads it).
 DECKHAND_VERSION="${_version}" bun run build:site
 
-# versions.json: the manifest the footer picker fetches — every release
-# tag, plus backfilled pre-tag versions from site/versions-known.txt,
-# plus the version being built, newest first. The newest entry points
-# at production; older ones at the Cloudflare Pages branch aliases
-# that deploy-site.sh publishes each release under.
 echo "== versions.json"
-_site_url="${DECKHAND_SITE_URL:-https://deckhand.sh}"
-_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
-_known="${_site}/versions-known.txt"
-_versions="$(
-  {
-    git -C "${_root}" tag -l 'v*' | sed 's/^v//'
-    if [ -f "${_known}" ]; then
-      grep -v '^[[:space:]]*#' "${_known}" || true
-    fi
-    echo "${_version}"
-  } | grep -v '^$' | sort -Vru
-)"
-_latest="$(echo "${_versions}" | head -n1)"
-{
-  printf '{\n  "latest": "%s",\n  "versions": [\n' "${_latest}"
-  _first=true
-  while IFS= read -r _v; do
-    if [ "${_first}" = true ]; then
-      _first=false
-    else
-      printf ',\n'
-    fi
-    if [ "${_v}" = "${_latest}" ]; then
-      _url="${_site_url}"
-    else
-      # Cloudflare's branch-alias rule: lowercase, non-alphanumerics
-      # collapsed to dashes, 28 chars max (mirrored in deploy-site.sh).
-      _alias="$(printf 'v%s' "${_v}" | tr '[:upper:]' '[:lower:]' \
-        | sed 's/[^a-z0-9]/-/g' | cut -c1-28)"
-      _url="https://${_alias}.${_project}.pages.dev"
-    fi
-    printf '    { "version": "%s", "url": "%s" }' "${_v}" "${_url}"
-  done <<<"${_versions}"
-  printf '\n  ]\n}\n'
-} >"${_site}/_site/versions.json"
+"${_root}/scripts/gen-versions.sh" "${_site}/_site/versions.json"
 
 echo "site built → site/_site/"
