@@ -43,6 +43,43 @@ jobs:
       - name: PTY-dependent tests
         run: cargo test --locked -- --ignored
 
+  coverage:
+    name: coverage
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install pinned toolchain + llvm-tools
+        run: |
+          rustup toolchain install
+          rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: coverage
+      - name: cache cargo-llvm-cov
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: cargo-llvm-cov-0.6.14-${{ runner.os }}
+      - name: install cargo-llvm-cov
+        run: command -v cargo-llvm-cov || cargo install cargo-llvm-cov --version 0.6.14 --locked
+      - name: measure line coverage
+        # --include-ignored folds in the PTY and unix-socket tests,
+        # which only run for real in CI. No --fail-under floor yet;
+        # add one once the baseline has settled.
+        run: |
+          cargo llvm-cov --locked --lcov --output-path lcov.info -- --include-ignored
+          {
+            echo '```'
+            cargo llvm-cov report
+            echo '```'
+          } >>"${GITHUB_STEP_SUMMARY}"
+          cargo llvm-cov report
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcov
+          path: lcov.info
+
   msrv:
     name: MSRV (1.88)
     if: github.actor != 'dependabot[bot]'

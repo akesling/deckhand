@@ -516,6 +516,7 @@ Repo tooling lives in `scripts/` (each self-contained and executable):
 |--------|------|
 | `scripts/lint.sh` | all linters: `cargo fmt --check`, clippy (native + wasm32), shellcheck, biome |
 | `scripts/check.sh` | lint + `cargo test` + TypeScript type-check |
+| `scripts/coverage.sh` | line-coverage report via cargo-llvm-cov (HTML + summary; CI uploads lcov) |
 | `scripts/build-wasm.sh` | wasm module → `site/wasm/` (`--dev` for fast builds) |
 | `scripts/build-site.sh` | full site build → `site/_site/` |
 | `scripts/dev.sh` | dev server: 11ty live reload + `bun --watch` + wasm rebuild on Rust changes |
