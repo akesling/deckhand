@@ -21,9 +21,10 @@ python3 -q
 ```
 ````
 
-is a real PTY: it spawns when the slide first appears, keeps running
-while you present other slides, and you can focus it (`t`), type into it,
-scroll its history, and restart it (`R`) if the demo goes sideways.
+is a real PTY: the slide shows the command until you run it with a
+keystroke — nothing executes without consent — and once running it
+keeps going while you present other slides. Focus it (`t`), type into
+it, scroll its history, restart it (`R`) if the demo goes sideways.
 Kick off a long build on slide 3, come back to the result on slide 12.
 
 ## Because talks aren't linear
@@ -49,6 +50,10 @@ Then anyone can run your deck with one command:
 ```sh
 deckhand https://gist.github.com/you/abc123
 ```
+
+And when someone insists on "just send the slides", `deckhand compile`
+typesets the same deck to a PDF or a single static HTML page — same
+layout engine, one page per slide, real selectable text.
 
 ## Because presenting well needs a second screen
 

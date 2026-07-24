@@ -1,4 +1,4 @@
-# deckhand.dev (the site)
+# deckhand.sh (the site)
 
 Static site for deckhand: landing page with a live WebAssembly demo,
 explainer, tutorial, docs, and an in-browser loader for URL/gist-hosted

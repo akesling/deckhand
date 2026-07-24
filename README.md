@@ -268,11 +268,13 @@ With several terminals on one slide, each shows its number in the title
 and `▸` marks the one `t` will focus; the others' hint shows which number
 selects them.
 
-The mouse works too: **click** a terminal to select and focus it, click
-anywhere else to release, **scroll-wheel** over a terminal to move through
-its history, and in the overview click a slide to jump to it. (Mouse
-events aren't forwarded into the PTY yet, so apps like htop stay
-keyboard-driven.)
+The mouse works too: **click** a terminal to select and focus it (apps
+that asked for the mouse get the click), click anywhere else to
+release, and in the overview click a slide to jump to it. The
+**scroll-wheel** over a terminal reaches whatever wants it: mouse-aware
+apps (htop) get real wheel events, full-screen apps without mouse
+reporting (less, vim) get arrow keys, and plain shells scroll
+deckhand's own history view.
 
 ## Presenting from a URL or gist
 
@@ -519,7 +521,7 @@ after review.
 
 ## Current limitations
 
-- No syntax highlighting in code blocks (yet)
 - Slides taller than the window are clipped, not scrolled
-- No images
+- Images render as ASCII art, and only when presenting natively — the
+  browser presenter shows a placeholder
 - Unix only (PTYs + unix sockets)

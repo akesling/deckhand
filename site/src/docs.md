@@ -304,6 +304,7 @@ back to a normal H1 — try it on the title slide in the
 | <kbd>shift-space</kbd>, <kbd>backspace</kbd>, <kbd>p</kbd> | previous slide |
 | <kbd>g</kbd>, <kbd>G</kbd> | first / last column |
 | <kbd>o</kbd> | overview — type a slide's jump code, or <kbd>hjkl</kbd> + <kbd>enter</kbd>, or click |
+| <kbd>/</kbd> | search slides — type to filter (titles, body, notes, commands), <kbd>↓</kbd>/<kbd>↑</kbd> select, <kbd>enter</kbd> jumps, <kbd>esc</kbd> closes |
 | <kbd>1</kbd>–<kbd>9</kbd> | select a terminal pane (marked with ▸) |
 | <kbd>t</kbd>, <kbd>enter</kbd> | run (after <kbd>y</kbd>) / focus the selected terminal |
 | <kbd>Ctrl-q</kbd> | release terminal focus |
@@ -314,8 +315,12 @@ back to a normal H1 — try it on the title slide in the
 
 While a terminal is focused, every key except <kbd>Ctrl-q</kbd> and the
 shift-scroll keys goes to the PTY. The mouse works too: click a
-terminal to focus it, click outside to release, scroll-wheel through
-history, click a slide in the overview to jump.
+terminal to focus it (apps that asked for the mouse get the click),
+click outside to release, click a slide in the overview to jump. The
+scroll-wheel over a terminal reaches whatever wants it: mouse-aware
+apps (htop) get real wheel events, full-screen apps without mouse
+reporting (less, vim) get arrow keys, and plain shells scroll
+deckhand's own history view.
 
 On slides with several terminals, each pane shows its number and ▸
 marks the one <kbd>t</kbd> will focus.
@@ -362,26 +367,61 @@ deckhand https://gist.github.com/you/abc123
 
 The [play page](/play/) does the same resolution in your browser.
 
-## Compiling to one file
+## Compiling and exporting
 
-`deckhand compile` flattens any deck — including manifests and remote
-decks — into a single markdown file that presents identically:
+`deckhand compile` turns any deck — manifests and remote decks
+included — into a single artifact: a markdown file that presents
+identically, a **PDF** (one page per slide), or a **self-contained
+static HTML page**. The `-o` extension picks the format, or force one
+with `--to md|pdf|html`:
 
 ```sh
 deckhand compile deck.json -o talk.md
-deckhand compile https://gist.github.com/you/abc123 -o talk.md
+deckhand compile talk.md -o talk.pdf
+deckhand compile https://gist.github.com/you/abc123 -o talk.html
 ```
 
-The deck title and deck theme are preserved as frontmatter, per-slide
+### One markdown file
+
+The default format flattens a deck into a single markdown file. The
+deck title and deck theme are preserved as frontmatter, per-slide
 themes as `theme` fences. Only per-slide `title` overrides have no
 single-file syntax; bare `---`/`--` lines inside slide bodies are
-rewritten to `***` so they can't split slides on re-parse.
+rewritten to `***` (and bare `||` lines inside row cells escaped) so
+they can't split slides on re-parse.
+
+### PDF and HTML
+
+Both exporters render every slide through the same layout engine that
+presents it — theming, banner headings, QR codes, and ASCII-art
+images included. Slides are a terminal-cell grid (`--cols` ×
+`--rows`, default 100 × 30), and colors resolve like this site's
+presenter: xterm defaults on a dark page. Terminal blocks render
+their baked snapshots (see below); a deck with unsnapshotted
+terminals requires the same `--snapshots` / `--no-snapshots` choice
+as any compile. Each format is a cargo feature (`pdf`, `html`), on by
+default.
+
+**PDF**: real, selectable text in an embedded, subsetted DejaVu Sans
+Mono — box-drawing borders, block glyphs, and QR modules are drawn as
+vector paths, so borders connect seamlessly and QR codes stay
+scannable at any zoom. `--font-size` (points, default 10) scales the
+page around the grid, and slide titles become PDF bookmarks: one
+entry per column, deeper slides nested beneath it.
+
+**HTML**: one file, no external assets, no wasm — each slide is a
+`<pre>` of styled text. Arrow keys / hjkl / space walk the same 2-D
+grid as presenting (the URL hash tracks `#col.row`), <kbd>f</kbd>
+goes fullscreen, text scales to fit the window, and printing lays
+slides out one per page.
 
 ### Snapshots: real terminal output on the web
 
-If a deck has terminal blocks, compiling requires choosing
-`--snapshots` or `--no-snapshots` — capturing *executes the deck's
-commands* on your machine, so deckhand won't guess. With `--snapshots`,
+If a deck has terminal blocks without baked snapshots, compiling
+requires choosing `--snapshots` or `--no-snapshots` — capturing
+*executes the deck's commands* on your machine, so deckhand won't
+guess (a deck whose terminals are all already snapshotted needs no
+flag). With `--snapshots`,
 each block runs in a real PTY, output settles
 (`--snapshot-wait-ms`, default 1500), and the screen is captured into
 the compiled file at `--snapshot-cols` width (default 80).

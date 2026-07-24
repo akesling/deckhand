@@ -61,7 +61,9 @@ deckhand talk.md
 
 Navigate with `space` / `shift-space` (walks everything), or steer
 yourself: `←`/`→` between columns, `↓`/`↑` for depth. Press `o` for the
-overview — every slide shows a short code; type it to jump there.
+overview — every slide shows a short code; type it to jump there. Or
+press `/` and type: it searches every slide's title, body, and notes,
+and `enter` jumps to the pick.
 
 ## Add a live terminal
 
@@ -151,10 +153,14 @@ per-slide themes:
 deckhand deck.json
 ```
 
-And flatten it back to one shareable file whenever you like:
+And flatten it back to one shareable file whenever you like — or
+typeset it as a PDF or a self-contained web page, one slide per page,
+through the same layout engine that presents it:
 
 ```sh
 deckhand compile deck.json -o talk.md
+deckhand compile deck.json -o talk.pdf
+deckhand compile deck.json -o talk.html
 ```
 
 ## Share it as a gist
