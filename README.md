@@ -311,13 +311,16 @@ The deck's title and deck-level theme are preserved as frontmatter, and
 per-slide themes as ` ```theme ` blocks. Caveats: per-slide `title`
 overrides have no single-file syntax and fall back to what the content
 implies; bare `---`/`--` lines inside slide bodies are rewritten to `***`
-so they don't split slides on re-parse.
+(and bare `||` lines inside row cells escaped) so they don't split
+slides on re-parse.
 
 ### Baking in terminal snapshots
 
-If the deck has terminal blocks, compiling requires an explicit choice
-— because capturing *executes the deck's commands* on your machine, and
-skipping silently would lose their output:
+If the deck has terminal blocks without baked snapshots, compiling
+requires an explicit choice — because capturing *executes the deck's
+commands* on your machine, and skipping silently would lose their
+output (a deck whose terminals are all already snapshotted needs no
+flag):
 
 ```sh
 deckhand compile deck.json -o talk.md --snapshots      # run + capture

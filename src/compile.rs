@@ -5,9 +5,11 @@
 //!
 //! The deck title and deck-level theme are preserved as frontmatter, and
 //! per-slide themes as `theme` fences. Slide `title` overrides have no
-//! single-file syntax and fall back to what the content implies. Bare
-//! `---`/`--` lines inside slide bodies would split slides on re-parse,
-//! so they're rewritten to `***` (with a warning).
+//! single-file syntax and fall back to what the content implies. Lines
+//! the parser would read as separators are defused (with a warning):
+//! bare `---`/`--` in slide bodies become `***`, and bare `||` lines
+//! inside row cells are backslash-escaped. Slides with no content at
+//! all emit an HTML comment so they aren't dropped on re-parse.
 
 use anyhow::{Context, Result};
 
@@ -18,8 +20,9 @@ use crate::deck::{self, Deck, Segment};
 ///
 /// `snapshots`: `Some(true)` captures, `Some(false)` skips, and `None`
 /// means the user didn't choose — an error if the deck has terminal
-/// blocks, since capturing would run their commands and skipping would
-/// silently lose the output.
+/// blocks without baked snapshots, since capturing would run their
+/// commands and skipping would silently lose the output (see
+/// [`crate::export::load`]).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run(
     input: &str,
@@ -27,37 +30,17 @@ pub fn run(
     snapshots: Option<bool>,
     snapshot_opts: crate::snapshot::Options,
 ) -> Result<()> {
-    use crate::source;
-
-    let source::Loaded {
-        mut deck,
+    let crate::source::Loaded {
+        deck,
         theme: deck_theme,
-        base_dir,
-    } = source::load(input)?;
-
-    let commands = deck.terminal_commands();
-    if !commands.is_empty() {
-        match snapshots {
-            Some(true) => {
-                crate::snapshot::capture(&mut deck, &base_dir, &snapshot_opts)
-                    .context("capturing terminal snapshots")?;
-            }
-            Some(false) => {}
-            None => anyhow::bail!(
-                "this deck has {} terminal block(s): {}\n\
-                 capturing snapshots runs those commands in PTYs on this machine.\n\
-                 pass --snapshots to capture their output (only for decks you trust),\n\
-                 or --no-snapshots to compile without captures",
-                commands.len(),
-                commands.join(", "),
-            ),
-        }
-    }
+        ..
+    } = crate::export::load(input, snapshots, &snapshot_opts)?;
 
     let (body, rewrites) = compile(&deck)?;
     if rewrites > 0 {
         eprintln!(
-            "warning: rewrote {rewrites} bare `---`/`--` line(s) inside slide content to `***` \
+            "warning: rewrote {rewrites} separator-lookalike line(s) inside slide content \
+             (bare `---`/`--` to `***`, bare `||` in row cells escaped) \
              so they don't split slides on re-parse"
         );
     }
@@ -115,10 +98,19 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
                 out.push_str(&serde_yaml::to_string(theme).context("serializing slide theme")?);
                 out.push_str("```\n\n");
             }
-            out.push_str(&emit_segments(&slide.segments, &mut rewrites));
+            let body = emit_segments(&slide.segments, &mut rewrites, false);
+            // A slide that emits nothing at all (an intentionally blank
+            // slide from a manifest) would be dropped on re-parse; an
+            // HTML comment is non-empty to the parser and renders as
+            // nothing.
+            if body.trim().is_empty() && slide.theme.is_none() && slide.notes.is_empty() {
+                out.push_str("<!-- blank slide -->\n\n");
+            } else {
+                out.push_str(&body);
+            }
             if !slide.notes.is_empty() {
                 out.push_str("???\n\n");
-                out.push_str(&sanitize(slide.notes.trim(), &mut rewrites));
+                out.push_str(&sanitize(slide.notes.trim(), &mut rewrites, false));
                 out.push_str("\n\n");
             }
         }
@@ -127,13 +119,14 @@ pub fn compile(deck: &Deck) -> Result<(String, usize)> {
 }
 
 /// Emit segments as single-file markdown; row cells recurse (one
-/// level, matching the parser).
-fn emit_segments(segments: &[Segment], rewrites: &mut usize) -> String {
+/// level, matching the parser). `in_row` marks cell content, where a
+/// bare `||` line would additionally split cells on re-parse.
+fn emit_segments(segments: &[Segment], rewrites: &mut usize, in_row: bool) -> String {
     let mut out = String::new();
     for seg in segments {
         match seg {
             Segment::Markdown(src) => {
-                out.push_str(&sanitize(src.trim_matches('\n'), rewrites));
+                out.push_str(&sanitize(src.trim_matches('\n'), rewrites, in_row));
                 out.push_str("\n\n");
             }
             Segment::Terminal(block) => {
@@ -169,7 +162,11 @@ fn emit_segments(segments: &[Segment], rewrites: &mut usize) -> String {
             Segment::Row(cells) => {
                 let bodies: Vec<String> = cells
                     .iter()
-                    .map(|cell| emit_segments(cell, rewrites).trim_matches('\n').to_string())
+                    .map(|cell| {
+                        emit_segments(cell, rewrites, true)
+                            .trim_matches('\n')
+                            .to_string()
+                    })
                     .collect();
                 let body = bodies.join("\n||\n");
                 // The outer fence must outrun any fence in the cells.
@@ -193,10 +190,12 @@ fn fence_len(body: &str) -> usize {
         + 1
 }
 
-/// Rewrite lines that the single-file parser would read as slide
-/// separators (bare runs of `-`, outside code fences) into `***`, which
-/// renders as the same horizontal rule without splitting the deck.
-fn sanitize(src: &str, rewrites: &mut usize) -> String {
+/// Rewrite lines the parser would read as separators (outside code
+/// fences): bare runs of `-` become `***`, which renders as the same
+/// horizontal rule without splitting the deck; inside row cells
+/// (`in_row`), bare runs of `|` are backslash-escaped, which renders
+/// the same pipes without splitting the cell.
+fn sanitize(src: &str, rewrites: &mut usize, in_row: bool) -> String {
     let mut out = Vec::new();
     let mut fence: deck::Fence = None;
     for line in src.lines() {
@@ -216,6 +215,11 @@ fn sanitize(src: &str, rewrites: &mut usize) -> String {
         if t.len() >= 2 && t.chars().all(|c| c == '-') {
             *rewrites += 1;
             out.push("***".to_string());
+            continue;
+        }
+        if in_row && t.len() >= 2 && t.chars().all(|c| c == '|') {
+            *rewrites += 1;
+            out.push(format!("\\{t}"));
             continue;
         }
         out.push(line.to_string());
@@ -415,6 +419,77 @@ mod tests {
         let snap = block.snapshot.as_ref().unwrap();
         assert_eq!((snap.cols, snap.rows), (40, 4));
         assert_eq!(snap.data, b"\x1b[1;1Hhello \x1b[31mred\x1b[0m");
+    }
+
+    #[test]
+    fn pipes_in_row_cells_round_trip() {
+        // A literal `||` line inside a row cell must not split the cell
+        // on re-parse. Unreachable via parse (it would have split), so
+        // build the deck by hand.
+        let deck = Deck {
+            title: "t".to_string(),
+            columns: vec![Column {
+                slides: vec![Slide {
+                    title: "s".to_string(),
+                    segments: vec![Segment::Row(vec![
+                        vec![Segment::Markdown("left".to_string())],
+                        vec![Segment::Markdown("above\n||\nbelow".to_string())],
+                    ])],
+                    notes: String::new(),
+                    theme: None,
+                }],
+            }],
+        };
+        let (md, rewrites) = compile(&deck).unwrap();
+        assert_eq!(rewrites, 1);
+        let reparsed = deck::parse(&md, "t").unwrap();
+        match &reparsed.slide(0, 0).segments[0] {
+            Segment::Row(cells) => {
+                assert_eq!(cells.len(), 2, "cell split leaked: {md}");
+                match &cells[1][0] {
+                    Segment::Markdown(src) => {
+                        assert!(src.contains("\\||"), "pipes not escaped: {src:?}")
+                    }
+                    other => panic!("expected markdown cell, got {other:?}"),
+                }
+            }
+            other => panic!("expected row, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn blank_slides_survive_round_trip() {
+        // A manifest can produce a slide with no content at all — an
+        // intentional blank. Compiling must not silently drop it.
+        let dir = scratch("compile-blank");
+        std::fs::write(dir.join("a.md"), "# alpha\n").unwrap();
+        std::fs::write(dir.join("blank.md"), "\n").unwrap();
+        std::fs::write(
+            dir.join("deck.json"),
+            r#"{ "columns": [ "a.md", "blank.md" ] }"#,
+        )
+        .unwrap();
+
+        let (original, _) = deck::load(&dir.join("deck.json")).unwrap();
+        assert_eq!(original.columns.len(), 2);
+        let (md, _) = compile(&original).unwrap();
+        let reparsed = deck::parse(&md, "t").unwrap();
+        assert_eq!(reparsed.columns.len(), 2, "blank slide dropped:\n{md}");
+        // The marker itself renders as nothing.
+        let text = crate::markdown::render(
+            match &reparsed.slide(1, 0).segments[0] {
+                Segment::Markdown(src) => src,
+                other => panic!("expected markdown, got {other:?}"),
+            },
+            40,
+            &crate::theme::Theme::default(),
+        );
+        assert!(
+            text.lines
+                .iter()
+                .all(|l| l.spans.iter().all(|s| s.content.trim().is_empty())),
+            "blank-slide marker rendered visibly: {text:?}"
+        );
     }
 
     #[test]

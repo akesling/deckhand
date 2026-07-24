@@ -16,6 +16,12 @@ use anyhow::{Context, Result};
 use crate::deck::{Deck, TermSnapshot};
 use crate::term::TermSession;
 
+/// Default [`Options::wait`], in milliseconds. The CLI's `--help`
+/// shows this same value via `cli`'s `default_value_t`.
+pub const DEFAULT_WAIT_MS: u64 = 1500;
+/// Default [`Options::cols`], shared with the CLI default.
+pub const DEFAULT_COLS: u16 = 80;
+
 /// Capture settings for [`capture`].
 pub struct Options {
     /// How long to let each command run before capturing.
@@ -31,8 +37,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            wait: Duration::from_millis(1500),
-            cols: 80,
+            wait: Duration::from_millis(DEFAULT_WAIT_MS),
+            cols: DEFAULT_COLS,
             root: None,
         }
     }

@@ -19,15 +19,12 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 use unicode_width::UnicodeWidthStr;
 
 use crate::palette;
 use crate::presenter::{Presenter, TerminalProvider};
-use crate::replay::SnapshotProvider;
-use crate::{source, theme};
 
 /// Settings for [`run`].
 pub struct Options {
@@ -47,8 +44,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            cols: 100,
-            rows: 30,
+            cols: crate::export::DEFAULT_COLS,
+            rows: crate::export::DEFAULT_ROWS,
             snapshots: None,
             snapshot_opts: crate::snapshot::Options::default(),
         }
@@ -59,70 +56,33 @@ impl Default for Options {
 /// slide, write a standalone HTML page to `output` (default: the
 /// deck's file name with `.html`, in the current directory).
 pub fn run(input: &str, output: Option<&Path>, opts: &Options) -> Result<()> {
-    let source::Loaded {
-        mut deck,
-        theme: deck_theme,
-        base_dir,
-    } = source::load(input)?;
-
-    let missing = deck.unsnapshotted_commands();
-    if !missing.is_empty() {
-        match opts.snapshots {
-            Some(true) => {
-                crate::snapshot::capture(&mut deck, &base_dir, &opts.snapshot_opts)
-                    .context("capturing terminal snapshots")?;
-            }
-            Some(false) => {}
-            None => anyhow::bail!(
-                "this deck has {} terminal block(s) without baked snapshots: {}\n\
-                 capturing snapshots runs those commands in PTYs on this machine.\n\
-                 pass --snapshots to capture their output (only for decks you trust),\n\
-                 or --no-snapshots to render placeholders",
-                missing.len(),
-                missing.join(", "),
-            ),
-        }
-    }
-    deck.resolve_images(&base_dir);
-
-    let cfgs: Vec<theme::ThemeConfig> = [theme::user_config()?, deck_theme]
-        .into_iter()
-        .flatten()
-        .collect();
-    let mut presenter = Presenter::new(deck, cfgs, SnapshotProvider::default())?;
-
+    let loaded = crate::export::load(input, opts.snapshots, &opts.snapshot_opts)?;
+    let mut presenter = crate::export::presenter(loaded)?;
     let html = render(&mut presenter, opts);
-    let path = match output {
-        Some(p) => p.to_path_buf(),
-        None => source::output_name(input, "html"),
-    };
-    std::fs::write(&path, &html).with_context(|| format!("writing {}", path.display()))?;
-    eprintln!(
-        "wrote {} ({} slides)",
-        path.display(),
-        presenter.deck().flat().len()
-    );
-    Ok(())
+    let slides = presenter.deck().flat().len();
+    crate::export::write(
+        html.as_bytes(),
+        output,
+        input,
+        "html",
+        &format!("{slides} slides"),
+    )
 }
 
 /// Render every slide of an already-built presenter to a standalone
 /// HTML document.
 pub fn render<P: TerminalProvider>(presenter: &mut Presenter<P>, opts: &Options) -> String {
-    let cols = opts.cols.max(20);
-    let rows = opts.rows.max(4);
-    // One extra row for the status bar the presenter always reserves;
-    // it's never emitted.
-    let area = Rect::new(0, 0, cols, rows + 1);
+    let crate::export::Pages {
+        cols,
+        rows,
+        slides: pages,
+    } = crate::export::render_pages(presenter, opts.cols, opts.rows);
 
-    let order = presenter.deck().flat();
     let mut styles = Styles::default();
     let mut slides = String::new();
-    for &(c, r) in &order {
-        presenter.goto(c, r);
-        let mut buf = Buffer::empty(area);
-        presenter.draw(area, &mut buf);
+    for ((c, r), buf) in &pages {
         let _ = write!(slides, "<pre class=\"slide\" id=\"s{c}-{r}\">");
-        emit_slide(&buf, cols, rows, &mut styles, &mut slides);
+        emit_slide(buf, cols, rows, &mut styles, &mut slides);
         slides.push_str("</pre>\n");
     }
 
@@ -385,6 +345,7 @@ fit();fromHash();
 mod tests {
     use super::*;
     use crate::deck;
+    use crate::replay::SnapshotProvider;
 
     fn html_for(src: &str) -> String {
         let deck = deck::parse(src, "test deck").unwrap();

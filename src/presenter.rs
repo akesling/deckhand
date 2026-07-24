@@ -512,6 +512,11 @@ fn split_hit(
     }
 }
 
+/// Rows [`Presenter::draw`] reserves at the bottom of its area for the
+/// status bar. Offscreen renderers (the PDF/HTML exporters) draw at
+/// `rows + STATUS_ROWS` and typeset only the top `rows` rows.
+pub const STATUS_ROWS: u16 = 1;
+
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Slide,
@@ -1121,16 +1126,16 @@ impl<P: TerminalProvider> Presenter<P> {
     pub fn draw(&mut self, area: Rect, buf: &mut Buffer) {
         self.term_rects.clear();
         self.overview_rects.clear();
-        if area.height < 2 {
+        if area.height < STATUS_ROWS + 1 {
             return;
         }
         let content = Rect {
-            height: area.height - 1,
+            height: area.height - STATUS_ROWS,
             ..area
         };
         let status = Rect {
-            y: area.y + area.height - 1,
-            height: 1,
+            y: area.y + area.height - STATUS_ROWS,
+            height: STATUS_ROWS,
             ..area
         };
         match self.mode {

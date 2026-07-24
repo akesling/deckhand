@@ -88,24 +88,24 @@ enum Cmd {
         #[arg(long)]
         no_snapshots: bool,
         /// How long to let each command run before capturing (ms)
-        #[arg(long, default_value_t = 1500)]
+        #[arg(long, default_value_t = crate::snapshot::DEFAULT_WAIT_MS)]
         snapshot_wait_ms: u64,
         /// Terminal width for captures
-        #[arg(long, default_value_t = 80)]
+        #[arg(long, default_value_t = crate::snapshot::DEFAULT_COLS)]
         snapshot_cols: u16,
         /// Working directory for captured commands (controls the prompt
         /// path etc.); defaults to the deck's directory
         #[arg(long)]
         snapshot_root: Option<PathBuf>,
         /// Slide grid width for pdf/html output, in terminal columns
-        #[arg(long, default_value_t = 100)]
+        #[arg(long, default_value_t = crate::export::DEFAULT_COLS)]
         cols: u16,
         /// Slide grid height for pdf/html output, in terminal rows
-        #[arg(long, default_value_t = 30)]
+        #[arg(long, default_value_t = crate::export::DEFAULT_ROWS)]
         rows: u16,
         /// Font size in points for pdf output; with the grid, this
         /// sets the page size
-        #[arg(long, default_value_t = 10.0)]
+        #[arg(long, default_value_t = crate::export::DEFAULT_FONT_SIZE)]
         font_size: f32,
     },
 }

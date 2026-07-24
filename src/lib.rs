@@ -82,7 +82,7 @@
 //! | [`hints`] | overview quick-jump codes |
 //! | [`compile`] | flatten any deck to single-file markdown |
 //! | [`proto`] | presenter → notes-client wire format |
-//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`cli`], `pdf`/`html` (same-named features, on by default) |
+//! | native-only | [`present`], [`term`], [`server`], [`notes`], [`source`], [`snapshot`], [`export`], [`cli`], `pdf`/`html` (same-named features, on by default) |
 //! | wasm-only | `web` |
 //!
 //! # Library quickstart
@@ -144,6 +144,8 @@ pub mod theme;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod export;
 #[cfg(all(not(target_arch = "wasm32"), feature = "html"))]
 pub mod html;
 #[cfg(not(target_arch = "wasm32"))]

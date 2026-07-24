@@ -29,16 +29,13 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 use unicode_width::UnicodeWidthStr;
 
 use crate::deck::Deck;
 use crate::palette::{self, Resolved};
 use crate::presenter::{Presenter, TerminalProvider};
-use crate::replay::SnapshotProvider;
-use crate::{source, theme};
 use font::{FaceId, Fonts};
 
 /// Settings for [`run`].
@@ -48,6 +45,8 @@ pub struct Options {
     /// Page grid height, in terminal rows (the status bar isn't drawn).
     pub rows: u16,
     /// Font size in points; with the grid, this sets the page size.
+    /// Clamped to 4–96 when rendering (non-finite values fall back to
+    /// the default) — a zero or NaN size would emit a broken page box.
     pub font_size: f32,
     /// Terminal blocks without snapshots: `Some(true)` captures now
     /// (running the deck's commands), `Some(false)` renders
@@ -60,9 +59,9 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            cols: 100,
-            rows: 30,
-            font_size: 10.0,
+            cols: crate::export::DEFAULT_COLS,
+            rows: crate::export::DEFAULT_ROWS,
+            font_size: crate::export::DEFAULT_FONT_SIZE,
             snapshots: None,
             snapshot_opts: crate::snapshot::Options::default(),
         }
@@ -73,50 +72,11 @@ impl Default for Options {
 /// slide, write a PDF to `output` (default: the deck's file name with
 /// `.pdf`, in the current directory).
 pub fn run(input: &str, output: Option<&Path>, opts: &Options) -> Result<()> {
-    let source::Loaded {
-        mut deck,
-        theme: deck_theme,
-        base_dir,
-    } = source::load(input)?;
-
-    let missing = deck.unsnapshotted_commands();
-    if !missing.is_empty() {
-        match opts.snapshots {
-            Some(true) => {
-                crate::snapshot::capture(&mut deck, &base_dir, &opts.snapshot_opts)
-                    .context("capturing terminal snapshots")?;
-            }
-            Some(false) => {}
-            None => anyhow::bail!(
-                "this deck has {} terminal block(s) without baked snapshots: {}\n\
-                 capturing snapshots runs those commands in PTYs on this machine.\n\
-                 pass --snapshots to capture their output (only for decks you trust),\n\
-                 or --no-snapshots to render placeholders",
-                missing.len(),
-                missing.join(", "),
-            ),
-        }
-    }
-    deck.resolve_images(&base_dir);
-
-    let cfgs: Vec<theme::ThemeConfig> = [theme::user_config()?, deck_theme]
-        .into_iter()
-        .flatten()
-        .collect();
-    let mut presenter = Presenter::new(deck, cfgs, SnapshotProvider::default())?;
-
+    let loaded = crate::export::load(input, opts.snapshots, &opts.snapshot_opts)?;
+    let mut presenter = crate::export::presenter(loaded)?;
     let bytes = render(&mut presenter, opts)?;
-    let path = match output {
-        Some(p) => p.to_path_buf(),
-        None => source::output_name(input, "pdf"),
-    };
-    std::fs::write(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
-    eprintln!(
-        "wrote {} ({} pages)",
-        path.display(),
-        presenter.deck().flat().len()
-    );
-    Ok(())
+    let pages = presenter.deck().flat().len();
+    crate::export::write(&bytes, output, input, "pdf", &format!("{pages} pages"))
 }
 
 /// Render every slide of an already-built presenter to PDF bytes.
@@ -124,33 +84,28 @@ pub fn render<P: TerminalProvider>(
     presenter: &mut Presenter<P>,
     opts: &Options,
 ) -> Result<Vec<u8>> {
-    let cols = opts.cols.max(20);
-    let rows = opts.rows.max(4);
-    // One extra row for the status bar the presenter always reserves;
-    // it's never typeset.
-    let area = Rect::new(0, 0, cols, rows + 1);
-
-    let order = presenter.deck().flat();
-    let mut pages = Vec::with_capacity(order.len());
-    for &(c, r) in &order {
-        presenter.goto(c, r);
-        let mut buf = Buffer::empty(area);
-        presenter.draw(area, &mut buf);
-        pages.push(buf);
-    }
+    let font_size = if opts.font_size.is_finite() {
+        opts.font_size.clamp(4.0, 96.0)
+    } else {
+        crate::export::DEFAULT_FONT_SIZE
+    };
+    let crate::export::Pages { cols, rows, slides } =
+        crate::export::render_pages(presenter, opts.cols, opts.rows);
+    let pages: Vec<Buffer> = slides.into_iter().map(|(_, buf)| buf).collect();
 
     let mut fonts = Fonts::new()?;
     // Pass 1: walk every page to learn which glyphs the deck uses.
     for buf in &pages {
-        emit_page(buf, cols, rows, opts.font_size, &mut fonts, None);
+        emit_page(buf, cols, rows, font_size, &mut fonts, None);
     }
     let subsets = Subsets::build(&fonts)?;
     // Pass 2: emit the real content streams with subset glyph ids.
     let contents: Vec<String> = pages
         .iter()
-        .map(|buf| emit_page(buf, cols, rows, opts.font_size, &mut fonts, Some(&subsets)))
+        .map(|buf| emit_page(buf, cols, rows, font_size, &mut fonts, Some(&subsets)))
         .collect();
 
+    let order = presenter.deck().flat();
     let outline = outline_nodes(presenter.deck(), &order);
     assemble(
         &contents,
@@ -160,7 +115,7 @@ pub fn render<P: TerminalProvider>(
         &presenter.deck().title,
         cols,
         rows,
-        opts.font_size,
+        font_size,
     )
 }
 
@@ -687,6 +642,8 @@ fn assemble(
 mod tests {
     use super::*;
     use crate::deck;
+    use crate::replay::SnapshotProvider;
+    use ratatui::layout::Rect;
 
     fn pdf_for(src: &str) -> Vec<u8> {
         let deck = deck::parse(src, "test deck").unwrap();
@@ -723,6 +680,27 @@ mod tests {
         // The QR block paints vector rects with its light background.
         assert!(content.contains(" re f"));
         assert!(fonts.regular.is_used());
+    }
+
+    #[test]
+    fn degenerate_font_sizes_are_clamped() {
+        // `--font-size 0`, negatives, and NaN (all accepted by clap's
+        // f32 parser) must not reach the page geometry.
+        let deck = deck::parse("# a\nhi\n", "t").unwrap();
+        let mut presenter = Presenter::new(deck, vec![], SnapshotProvider::default()).unwrap();
+        for bad in [0.0, -5.0, f32::NAN, f32::INFINITY] {
+            let opts = Options {
+                font_size: bad,
+                ..Options::default()
+            };
+            let bytes = render(&mut presenter, &opts).unwrap();
+            assert!(bytes.starts_with(b"%PDF-"), "font_size {bad} broke render");
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(
+                !text.contains("NaN") && !text.contains("MediaBox [0 0 0"),
+                "font_size {bad} leaked into geometry"
+            );
+        }
     }
 
     #[test]
