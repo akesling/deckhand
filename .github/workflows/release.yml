@@ -12,6 +12,14 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Re-run any part of a release (a failed deploy, missing binaries)
+  # for an existing tag without re-tagging.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to (re)release"
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,12 +33,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: create release for the tag
         run: |
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
-            || gh release create "${GITHUB_REF_NAME}" --verify-tag \
-                 --title "deckhand ${GITHUB_REF_NAME}" --generate-notes
+          gh release view "${TAG}" >/dev/null 2>&1 \
+            || gh release create "${TAG}" --verify-tag \
+                 --title "deckhand ${TAG}" --generate-notes
 
   binaries:
     name: binaries (${{ matrix.target }})
@@ -40,33 +49,41 @@ jobs:
       contents: write
     strategy:
       matrix:
+        # x86_64 macOS cross-compiles from the arm64 runner — the
+        # last x86_64 macOS runner (macos-13) has been retired.
         include:
           - { runner: macos-14, target: aarch64-apple-darwin }
-          - { runner: macos-13, target: x86_64-apple-darwin }
+          - { runner: macos-14, target: x86_64-apple-darwin }
           - { runner: ubuntu-latest, target: x86_64-unknown-linux-gnu }
           - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - name: install pinned toolchain
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           key: bin-${{ matrix.target }}
       - name: build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: package
         # Asset names carry no version so that
         # releases/latest/download/… always resolves (install.sh).
         run: |
           _stage="$(mktemp -d)"
-          cp target/release/deckhand LICENSE README.md "${_stage}/"
+          cp "target/${{ matrix.target }}/release/deckhand" LICENSE README.md "${_stage}/"
           tar -C "${_stage}" -czf "deckhand-${{ matrix.target }}.tar.gz" \
             deckhand LICENSE README.md
       - name: upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" \
+          gh release upload "${TAG}" \
             "deckhand-${{ matrix.target }}.tar.gz" --clobber
   site:
     name: deploy site
@@ -76,6 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag || github.ref }}
           # versions.json is generated from the full tag list.
           fetch-depth: 0
       - name: install pinned toolchain
@@ -100,4 +118,5 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: ./scripts/deploy-site.sh "${GITHUB_REF_NAME}"
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: ./scripts/deploy-site.sh "${TAG}"
