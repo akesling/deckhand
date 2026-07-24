@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>getting started · deckhand ⚓</title>
+  <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
+  <link rel="stylesheet" href="/v0.3.0/css/site.css">
+  <link rel="alternate" type="text/markdown" href="/v0.3.0/getting-started/index.md">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
+  
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/v0.3.0/">deckhand <span class="anchor">⚓</span></a>
+    <nav>
+      <a href="/v0.3.0/why/"><span class="n">1:</span>why</a>
+      <a href="/v0.3.0/getting-started/" aria-current="page"><span class="n">2:</span>getting started</a>
+      <a href="/v0.3.0/docs/"><span class="n">3:</span>docs</a>
+      <a href="/v0.3.0/playground/"><span class="n">4:</span>playground</a>
+      <a href="/v0.3.0/play/"><span class="n">5:</span>play</a>
+      <a href="https://github.com/akesling/deckhand"><span class="n">6:</span>source</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Getting started</h1>
+<h2>Install</h2>
+<p>deckhand is a single binary. Grab a prebuilt one (macOS arm64/x86_64,
+Linux x86_64/arm64):</p>
+<pre><code class="language-sh">curl -fsSL https://deckhand.sh/install.sh | sh
+</code></pre>
+<p>…or build from source with a Rust toolchain: <code>cargo install deckhand</code>.</p>
+<p>Try the demo deck:</p>
+<pre><code class="language-sh">deckhand https://deckhand.sh/decks/demo.md
+</code></pre>
+<p><code>space</code> advances, <code>?</code> shows every key, <code>q</code> quits.</p>
+<h2>Your first deck</h2>
+<p>Create <code>talk.md</code>:</p>
+<pre><code class="language-markdown">---
+title: my first deck
+theme:
+  border_type: rounded
+---
+
+# hello ⚓
+
+this is a slide
+
+---
+
+# a second slide
+
+- `---` starts a new column
+- plain markdown: **bold**, `code`, tables, lists
+
+--
+
+## a deeper slide
+
+`--` goes *deeper* in the same column — detail you only
+show if someone asks. `↑` resurfaces.
+</code></pre>
+<p>Present it:</p>
+<pre><code class="language-sh">deckhand talk.md
+</code></pre>
+<p>Navigate with <code>space</code> / <code>shift-space</code> (walks everything), or steer
+yourself: <code>←</code>/<code>→</code> between columns, <code>↓</code>/<code>↑</code> for depth. Press <code>o</code> for the
+overview — every slide shows a short code; type it to jump there. Or
+press <code>/</code> and type: it searches every slide's title, body, and notes,
+and <code>enter</code> jumps to the pick.</p>
+<h2>Add a live terminal</h2>
+<p>Put a real shell in a slide:</p>
+<pre><code class="language-markdown"># demo time
+
+```terminal rows=10
+python3 -q
+```
+</code></pre>
+<p>The slide shows the command; press <code>t</code>, then <code>y</code> to run it — nothing
+executes without your say-so. Once running, <code>t</code> focuses it (every key
+goes to the terminal), <code>Ctrl-q</code> returns to the deck, <code>s</code> stops it, and
+<code>R</code> restarts it if a demo goes sideways. Prefer the old behavior? Pass
+<code>--eager</code> and terminals start the moment their slide appears. Leave the
+body empty for an interactive shell, or use <code>rows=fill</code> to fill the
+slide.</p>
+<h2>Add a QR code — or two, side by side</h2>
+<p>A <code>qr</code> fence renders as a scannable code (black-on-white, whatever
+your theme), and a <code>row</code> fence puts blocks next to each other, cells
+split by <code>||</code>:</p>
+<pre><code class="language-markdown"># find the slides later
+
+````row
+```qr
+https://gist.github.com/you/abc123
+```
+||
+```qr
+https://en.wikipedia.org/wiki/QR_code
+```
+````
+</code></pre>
+<p>Rows hold any blocks — markdown next to a terminal, code beside a QR.
+And a markdown image alone on its own line (<code>![diagram](arch.png)</code>)
+renders as colored ASCII art, resolved against the deck's directory.</p>
+<h2>Add presenter notes</h2>
+<p>Everything after a bare <code>???</code> line is invisible to the audience:</p>
+<pre><code class="language-markdown"># pricing
+
+it's complicated
+
+???
+
+Don't improvise here. Point at the table and move on.
+</code></pre>
+<p>In a second terminal (tmux pane, second window, ssh):</p>
+<pre><code class="language-sh">deckhand notes
+</code></pre>
+<p>It follows the presentation live: current notes, next slide, talk timer.</p>
+<h2>Grow into a manifest</h2>
+<p>When one file gets unwieldy, lay the talk out in <code>deck.json</code> — one
+markdown file per slide, terminals as whole slides, stacked panes,
+per-slide themes:</p>
+<pre><code class="language-json">{
+  &quot;title&quot;: &quot;my talk&quot;,
+  &quot;theme&quot;: { &quot;accent&quot;: &quot;magenta&quot; },
+  &quot;columns&quot;: [
+    &quot;slides/intro.md&quot;,
+    [&quot;slides/topic.md&quot;, &quot;slides/topic-deep.md&quot;],
+    { &quot;terminal&quot;: { &quot;command&quot;: &quot;htop&quot; }, &quot;title&quot;: &quot;live demo&quot; }
+  ]
+}
+</code></pre>
+<pre><code class="language-sh">deckhand deck.json
+</code></pre>
+<p>And flatten it back to one shareable file whenever you like — or
+typeset it as a PDF or a self-contained web page, one slide per page,
+through the same layout engine that presents it:</p>
+<pre><code class="language-sh">deckhand compile deck.json -o talk.md
+deckhand compile deck.json -o talk.pdf
+deckhand compile deck.json -o talk.html
+</code></pre>
+<h2>Share it as a gist</h2>
+<p>Put <code>talk.md</code> (or a whole manifest + slide files) in a GitHub gist, and
+anyone can present it:</p>
+<pre><code class="language-sh">deckhand https://gist.github.com/you/abc123
+</code></pre>
+<p>…or load it in the browser on <a href="/v0.3.0/play/">the play page</a>.</p>
+<p>Next: the <a href="/v0.3.0/docs/">full documentation</a> covers every key, format detail,
+and theme knob.</p>
+
+  </main>
+  <footer>
+    <span class="seg">⚓ deckhand</span>
+    <p>a slide deck, in your terminal · MIT licensed · © 2026 Alex Kesling</p>
+    <select id="version-picker" data-version="0.3.0" aria-label="site version">
+      <option value="">v0.3.0</option>
+    </select>
+  </footer>
+  <script type="module" src="/v0.3.0/js/version.js"></script>
+  
+</body>
+</html>

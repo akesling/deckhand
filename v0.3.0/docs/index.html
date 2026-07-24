@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>docs · deckhand ⚓</title>
+  <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
+  <link rel="stylesheet" href="/v0.3.0/css/site.css">
+  <link rel="alternate" type="text/markdown" href="/v0.3.0/docs/index.md">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
+  
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/v0.3.0/">deckhand <span class="anchor">⚓</span></a>
+    <nav>
+      <a href="/v0.3.0/why/"><span class="n">1:</span>why</a>
+      <a href="/v0.3.0/getting-started/"><span class="n">2:</span>getting started</a>
+      <a href="/v0.3.0/docs/" aria-current="page"><span class="n">3:</span>docs</a>
+      <a href="/v0.3.0/playground/"><span class="n">4:</span>playground</a>
+      <a href="/v0.3.0/play/"><span class="n">5:</span>play</a>
+      <a href="https://github.com/akesling/deckhand"><span class="n">6:</span>source</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Documentation</h1>
+<p>Everything deckhand does, in detail. For a gentler intro, start with
+<a href="/v0.3.0/getting-started/">getting started</a>.</p>
+<h2>Deck formats</h2>
+<p>Decks come in two flavors that share all their powers: a <strong>single
+markdown file</strong> with separators, or a <strong>JSON manifest</strong> that lays out
+one markdown file per slide.</p>
+<h3>Single-file decks</h3>
+<p>Two separators give the deck its two dimensions:</p>
+<pre><code class="language-markdown"># first topic          ← column 1, top
+
+---
+
+# second topic         ← column 2, top
+
+--
+
+## the weeds           ← column 2, one level deeper
+</code></pre>
+<ul>
+<li><code>---</code> on its own line starts a new <strong>column</strong> (earlier / later)</li>
+<li><code>--</code> on its own line starts a <strong>deeper</strong> slide in the same column</li>
+<li>both are ignored inside fenced code blocks</li>
+</ul>
+<p>A deck can open with <strong>frontmatter</strong> carrying a title and theme:</p>
+<pre><code class="language-markdown">---
+title: my talk
+theme:
+  border_type: rounded
+  accent: magenta
+---
+</code></pre>
+<p>The leading block is only treated as frontmatter when it parses as a
+YAML mapping — a bare <code>---</code> at the top still just separates columns.</p>
+<h3>Presenter notes</h3>
+<p>Everything after a bare <code>???</code> line is that slide's presenter notes:
+invisible when presenting, streamed to <code>deckhand notes</code>.</p>
+<h3>Embedded terminals</h3>
+<p>A fenced code block whose info string is <code>terminal</code> becomes a live,
+interactive PTY on the slide:</p>
+<pre><code class="language-markdown">```terminal rows=10
+python3 -q
+```
+</code></pre>
+<ul>
+<li>the body runs via <code>$SHELL -c</code>; leave it <strong>empty</strong> for an interactive
+shell — the working directory is the deck's directory</li>
+<li><code>rows=N</code> sets the viewport height (default 12, max 40); <code>rows=fill</code>
+expands to all remaining slide height</li>
+<li><strong>nothing executes without consent</strong>: each terminal shows the command
+it <em>would</em> run until you approve it in-deck — <kbd>t</kbd> (or click),
+then <kbd>y</kbd>; <kbd>s</kbd> stops it again, <kbd>R</kbd> restarts
+it. <code>--eager</code> starts every terminal automatically when its slide first
+appears</li>
+<li>once running, terminals keep running while you navigate elsewhere,
+and die when deckhand exits</li>
+<li>each terminal keeps 10,000 lines of history with a scrollbar on its
+right border once there's something to scroll</li>
+<li>multiple terminal blocks on one slide stack vertically; fill-height
+ones split the leftover space evenly</li>
+</ul>
+<h3>Syntax highlighting</h3>
+<p>Fenced code blocks with a language tag get lightweight highlighting —
+keywords, strings, comments, numbers/constants, called functions, and
+Capitalized types — for rust, python, javascript/typescript, go,
+c/c++, sh, json, yaml, toml, and sql. Unknown languages render plain.
+Colors come from the theme (<code>code_keyword</code>, <code>code_string</code>,
+<code>code_comment</code>, <code>code_literal</code>, <code>code_function</code>, <code>code_type</code>),
+defaulting to a One Dark-flavored truecolor palette — RGB, so
+terminal color schemes can't remap it. It's a small built-in
+tokenizer, not a grammar engine, so the wasm presenter stays light
+and the browser gets the same colors.</p>
+<h3>QR codes</h3>
+<p>A fenced block whose info string is <code>qr</code> renders its body — a URL, some
+text — as a scannable QR code:</p>
+<pre><code class="language-markdown">```qr
+https://deckhand.sh
+```
+</code></pre>
+<p>It draws black-on-white whatever the terminal palette, so phone cameras
+actually read it. Works right here in the browser presenter, too — try
+it in the <a href="/v0.3.0/playground/">playground</a>.</p>
+<h3>Images as ASCII art</h3>
+<p>A markdown image alone on its own line renders as colored ASCII art,
+scaled to the slide and resolved against the deck's directory:</p>
+<pre><code class="language-markdown">![the architecture](diagrams/arch.png)
+</code></pre>
+<p>PNG, JPEG, GIF, and WebP. Images referenced mid-sentence stay inline
+text, and the browser presenter shows a placeholder — pixels need a
+filesystem.</p>
+<h3>Side-by-side layout</h3>
+<p>A fenced block whose info string is <code>row</code> lays its cells out
+side-by-side, splitting the slide width equally; <code>||</code> on its own line
+separates cells. A cell stacks anything a slide can hold — markdown,
+code blocks, terminals, QR codes, images — except another row. Make
+the outer fence longer than any fence inside the cells:</p>
+<pre><code class="language-markdown">````row
+```qr
+https://deckhand.sh
+```
+||
+```terminal rows=10
+python3 -q
+```
+````
+</code></pre>
+<p>Cells are top-aligned and the row is as tall as its tallest cell.
+<code>rows=fill</code> terminals inside a row fall back to their fixed height
+(default 12) — &quot;the rest of the slide&quot; isn't a height a side-by-side
+cell can claim.</p>
+<h3>Per-slide themes</h3>
+<p>A <code>theme</code> fence anywhere on a slide overrides the theme for that slide
+only (margins, width, borders, colors — the status bar keeps the deck
+theme):</p>
+<pre><code class="language-markdown">```theme
+margin: 0
+accent: red
+```
+</code></pre>
+<h2>JSON manifests</h2>
+<p>For bigger talks, point deckhand at a manifest: <code>deckhand deck.json</code>.</p>
+<pre><code class="language-json">{
+  &quot;title&quot;: &quot;my talk&quot;,
+  &quot;theme&quot;: { &quot;accent&quot;: &quot;magenta&quot; },
+  &quot;columns&quot;: [
+    &quot;slides/intro.md&quot;,
+    [&quot;slides/topic.md&quot;, &quot;slides/topic-deep.md&quot;],
+    { &quot;terminal&quot;: { &quot;command&quot;: &quot;htop&quot; }, &quot;title&quot;: &quot;live demo&quot; },
+    { &quot;file&quot;: &quot;slides/fin.md&quot;, &quot;notes_file&quot;: &quot;slides/fin-notes.md&quot; }
+  ]
+}
+</code></pre>
+<ul>
+<li><code>columns</code> is the presentation left-to-right; each entry is a
+<strong>string</strong> (single-slide column), an <strong>array</strong> (a column with depth,
+top first), or an <strong>object</strong></li>
+<li>object slides take exactly one of <code>file</code>, <code>terminal</code>, or <code>panes</code>,
+plus optional <code>title</code>, <code>notes</code> (inline markdown), <code>notes_file</code>, and
+<code>theme</code></li>
+<li>a <code>terminal</code> slide is one big PTY, filling the slide unless you give
+it <code>rows</code></li>
+<li><code>panes</code> stacks several panes vertically — any mix of markdown files
+and terminals:</li>
+</ul>
+<pre><code class="language-json">{ &quot;panes&quot;: [
+    &quot;slides/context.md&quot;,
+    { &quot;terminal&quot;: { &quot;command&quot;: &quot;python3 -q&quot;, &quot;rows&quot;: 8 } },
+    { &quot;terminal&quot;: {} }
+] }
+</code></pre>
+<ul>
+<li>paths are relative to the manifest; referenced markdown files are one
+slide each (no <code>---</code> splitting) but keep <code>???</code> notes and
+<code>terminal</code>/<code>theme</code> fences</li>
+<li>a slide file's own <code>theme</code> fence merges <em>under</em> the manifest's
+per-slide <code>theme</code> (manifest wins field by field)</li>
+</ul>
+<h2>Theming</h2>
+<p>Layout, borders, and colors merge field by field from four sources,
+each later one winning:</p>
+<ol>
+<li>built-in defaults (solarized-safe indexed grays)</li>
+<li><code>~/.config/deckhand/theme.json</code> (or under <code>$XDG_CONFIG_HOME</code>) — your
+personal defaults, applies to every deck and the notes view</li>
+<li>the deck's theme — manifest <code>&quot;theme&quot;</code> or markdown frontmatter</li>
+<li>the slide's theme — manifest slide <code>&quot;theme&quot;</code> or a <code>theme</code> fence</li>
+</ol>
+<p>All fields, all optional:</p>
+<pre><code class="language-json">{
+  &quot;max_width&quot;: 84,
+  &quot;max_height&quot;: 30,
+  &quot;margin&quot;: 2,
+  &quot;margin_y&quot;: 1,
+  &quot;align_x&quot;: &quot;center&quot;,
+  &quot;align_y&quot;: &quot;top&quot;,
+  &quot;pin_title&quot;: true,
+  &quot;title_gap&quot;: 1,
+  &quot;border_type&quot;: &quot;rounded&quot;,
+  &quot;accent&quot;: &quot;magenta&quot;,
+  &quot;muted&quot;: 244,
+  &quot;term_border&quot;: &quot;gray&quot;,
+  &quot;snapshot_border&quot;: &quot;yellow&quot;,
+  &quot;status_bg&quot;: &quot;#3a3a3a&quot;,
+  &quot;status_fg&quot;: 250,
+  &quot;h1_style&quot;: &quot;banner&quot;,
+  &quot;h1&quot;: &quot;yellow&quot;,
+  &quot;h2&quot;: &quot;light-yellow&quot;,
+  &quot;bullet&quot;: &quot;magenta&quot;,
+  &quot;quote&quot;: &quot;green&quot;,
+  &quot;link&quot;: &quot;light-blue&quot;,
+  &quot;inline_code&quot;: &quot;yellow&quot;,
+  &quot;code_bg&quot;: 235,
+  &quot;code_fg&quot;: 252,
+  &quot;code_keyword&quot;: &quot;#c678dd&quot;,
+  &quot;code_string&quot;: &quot;#98c379&quot;,
+  &quot;code_comment&quot;: &quot;#7f8490&quot;,
+  &quot;code_literal&quot;: &quot;#d19a66&quot;,
+  &quot;code_function&quot;: &quot;#61afef&quot;,
+  &quot;code_type&quot;: &quot;#e5c07b&quot;,
+  &quot;qr_dark&quot;: &quot;#102040&quot;,
+  &quot;qr_light&quot;: &quot;#fdf6e3&quot;
+}
+</code></pre>
+<p>Colors take a name (<code>&quot;cyan&quot;</code>, <code>&quot;light-blue&quot;</code>), hex (<code>&quot;#rrggbb&quot;</code>), or a
+0–255 palette index. <code>qr_dark</code>/<code>qr_light</code> color QR blocks (modules /
+background, quiet zone included), defaulting to true black on true
+white — restyle at your own risk: scanners need a dark code on a light
+background with strong contrast, so dark navy on cream scans fine but
+an inverted or low-contrast pairing often won't. <code>snapshot_border</code> styles terminals showing a
+baked-in snapshot, superseding <code>term_border</code> for those — set it in a
+slide's <code>theme</code> fence to mark that slide's captures distinctly; unset,
+snapshots use <code>term_border</code> like any terminal. <code>border_type</code> is
+<code>plain</code>, <code>rounded</code>, <code>double</code>, or <code>thick</code>.</p>
+<h3>Layout</h3>
+<p>One content box, two axes, the same three questions per axis — and
+three rules: margins always win, caps bound everything drawn,
+alignment only places what's left.</p>
+<table>
+<thead>
+<tr>
+<th>axis</th>
+<th>air (min)</th>
+<th>cap (max)</th>
+<th>leftover space</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>x</td>
+<td><code>margin_x</code> (default 2)</td>
+<td><code>max_width</code> (default 96)</td>
+<td><code>align_x</code>: left / <strong>center</strong> / right</td>
+</tr>
+<tr>
+<td>y</td>
+<td><code>margin_y</code> (default 0)</td>
+<td><code>max_height</code> (default unlimited)</td>
+<td><code>align_y</code>: top / <strong>center</strong> / bottom</td>
+</tr>
+</tbody>
+</table>
+<p><code>margin</code> sets both axes at once; the per-axis keys win over it. Units
+are terminal cells (columns / rows). <code>max_height</code> caps everything the
+slide draws — fill terminals and a pinned title included.</p>
+<p><code>pin_title</code> anchors a slide-leading heading to the top of the content
+area (i.e. at row <code>margin_y</code>), with <code>title_gap</code> blank rows (default 1)
+below it; the body lays out in the remaining space, still following
+<code>align_y</code>. That's how a title sits on the same row on every slide
+while the body stays centered.</p>
+<p><code>h1_style: &quot;banner&quot;</code> draws level-1 headings as large block glyphs,
+three rows tall (A–Z, 0–9, light punctuation — case-insensitive). A
+heading the font can't render, or that won't fit the width, falls
+back to a normal H1 — try it on the title slide in the
+<a href="/v0.3.0/playground/">playground</a>.</p>
+<blockquote>
+<p>Tip: prefer palette indexes (16–255) or hex over ANSI names for
+grays. Schemes like solarized remap the 16 ANSI colors, turning ANSI
+&quot;dark gray&quot; nearly invisible — deckhand's own defaults use indexed
+grays for exactly this reason.</p>
+</blockquote>
+<h2>Keys</h2>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><kbd>←</kbd>/<kbd>h</kbd> <kbd>→</kbd>/<kbd>l</kbd></td>
+<td>previous / next column</td>
+</tr>
+<tr>
+<td><kbd>↓</kbd>/<kbd>j</kbd> <kbd>↑</kbd>/<kbd>k</kbd></td>
+<td>deeper / shallower</td>
+</tr>
+<tr>
+<td><kbd>space</kbd>, <kbd>n</kbd></td>
+<td>next slide (walks every column depth-first)</td>
+</tr>
+<tr>
+<td><kbd>shift-space</kbd>, <kbd>backspace</kbd>, <kbd>p</kbd></td>
+<td>previous slide</td>
+</tr>
+<tr>
+<td><kbd>g</kbd>, <kbd>G</kbd></td>
+<td>first / last column</td>
+</tr>
+<tr>
+<td><kbd>pgdn</kbd>/<kbd>pgup</kbd></td>
+<td>scroll a slide taller than the window, then advance</td>
+</tr>
+<tr>
+<td><kbd>o</kbd></td>
+<td>overview — type a slide's jump code, or <kbd>hjkl</kbd> + <kbd>enter</kbd>, or click</td>
+</tr>
+<tr>
+<td><kbd>/</kbd></td>
+<td>search slides — type to filter (titles, body, notes, commands), <kbd>↓</kbd>/<kbd>↑</kbd> select, <kbd>enter</kbd> jumps, <kbd>esc</kbd> closes</td>
+</tr>
+<tr>
+<td><kbd>1</kbd>–<kbd>9</kbd></td>
+<td>select a terminal pane (marked with ▸)</td>
+</tr>
+<tr>
+<td><kbd>t</kbd>, <kbd>enter</kbd></td>
+<td>run (after <kbd>y</kbd>) / focus the selected terminal</td>
+</tr>
+<tr>
+<td><kbd>Ctrl-q</kbd></td>
+<td>release terminal focus</td>
+</tr>
+<tr>
+<td><kbd>shift-pgup</kbd>/<kbd>pgdn</kbd></td>
+<td>scroll terminal history (also <kbd>shift-↑</kbd>/<kbd>↓</kbd>)</td>
+</tr>
+<tr>
+<td><kbd>s</kbd> / <kbd>R</kbd></td>
+<td>stop / restart the selected terminal</td>
+</tr>
+<tr>
+<td><kbd>?</kbd></td>
+<td>help</td>
+</tr>
+<tr>
+<td><kbd>q</kbd></td>
+<td>quit</td>
+</tr>
+</tbody>
+</table>
+<p>While a terminal is focused, every key except <kbd>Ctrl-q</kbd> and the
+shift-scroll keys goes to the PTY. The mouse works too: click a
+terminal to focus it (apps that asked for the mouse get the click),
+click outside to release, click a slide in the overview to jump. The
+scroll-wheel over a terminal reaches whatever wants it: mouse-aware
+apps (htop) get real wheel events, full-screen apps without mouse
+reporting (less, vim) get arrow keys, and plain shells scroll
+deckhand's own history view. Off-terminal, the wheel scrolls a slide
+taller than the window (▲/▼ in the corners mark clipped content).</p>
+<p>On slides with several terminals, each pane shows its number and ▸
+marks the one <kbd>t</kbd> will focus.</p>
+<h2>Live reload</h2>
+<p>Local decks live-reload while presenting: deckhand watches the deck
+file — and for manifests, every referenced slide and notes file, plus
+your user theme — and hot-swaps the deck when anything changes. Your
+position is kept (clamped if the deck shrank), live terminals survive
+when the deck's terminal blocks are unchanged, and a mid-edit parse
+error keeps the current deck with the error shown on the status bar.
+Disable with <code>--no-watch</code>; remote decks aren't watched.</p>
+<h2>Presenter notes over a socket</h2>
+<p><code>deckhand present</code> listens on a unix socket (default
+<code>$TMPDIR/deckhand.sock</code>) and broadcasts the current slide, its notes,
+the next slide's title, and a talk timer. <code>deckhand notes</code> renders that
+from any other terminal and reconnects automatically.</p>
+<p>Running two decks at once? Give each a socket:</p>
+<pre><code class="language-sh">deckhand present talk.md --socket /tmp/talk.sock
+deckhand notes --socket /tmp/talk.sock
+</code></pre>
+<h2>Presenting from URLs and gists</h2>
+<p>Any deck argument can be a URL:</p>
+<pre><code class="language-sh">deckhand https://example.com/talks/deck.md
+deckhand https://gist.github.com/you/abc123
+</code></pre>
+<ul>
+<li>plain URLs fetch that file; remote manifests fetch their referenced
+paths relative to the manifest's URL</li>
+<li>gist page URLs resolve through the GitHub API; the deck file is
+picked by priority: <code>deck.json</code>, <code>deck.md</code>, the only file, first
+<code>.md</code> — so a gist can hold a whole multi-file deck</li>
+<li>embedded terminals in remote decks run in your current directory</li>
+</ul>
+<p>The <a href="/v0.3.0/play/">play page</a> does the same resolution in your browser.</p>
+<h2>Compiling and exporting</h2>
+<p><code>deckhand compile</code> turns any deck — manifests and remote decks
+included — into a single artifact: a markdown file that presents
+identically, a <strong>PDF</strong> (one page per slide), or a <strong>self-contained
+static HTML page</strong>. The <code>-o</code> extension picks the format, or force one
+with <code>--to md|pdf|html</code>:</p>
+<pre><code class="language-sh">deckhand compile deck.json -o talk.md
+deckhand compile talk.md -o talk.pdf
+deckhand compile https://gist.github.com/you/abc123 -o talk.html
+</code></pre>
+<h3>One markdown file</h3>
+<p>The default format flattens a deck into a single markdown file. The
+deck title and deck theme are preserved as frontmatter, per-slide
+themes as <code>theme</code> fences. Only per-slide <code>title</code> overrides have no
+single-file syntax; bare <code>---</code>/<code>--</code> lines inside slide bodies are
+rewritten to <code>***</code> (and bare <code>||</code> lines inside row cells escaped) so
+they can't split slides on re-parse.</p>
+<h3>PDF and HTML</h3>
+<p>Both exporters render every slide through the same layout engine that
+presents it — theming, banner headings, QR codes, and ASCII-art
+images included. Slides are a terminal-cell grid (<code>--cols</code> ×
+<code>--rows</code>, default 100 × 30), and colors resolve like this site's
+presenter: xterm defaults on a dark page. Terminal blocks render
+their baked snapshots (see below); a deck with unsnapshotted
+terminals requires the same <code>--snapshots</code> / <code>--no-snapshots</code> choice
+as any compile. Each format is a cargo feature (<code>pdf</code>, <code>html</code>), on by
+default.</p>
+<p><strong>PDF</strong>: real, selectable text in an embedded, subsetted DejaVu Sans
+Mono — box-drawing borders, block glyphs, and QR modules are drawn as
+vector paths, so borders connect seamlessly and QR codes stay
+scannable at any zoom. <code>--font-size</code> (points, default 10) scales the
+page around the grid, and slide titles become PDF bookmarks: one
+entry per column, deeper slides nested beneath it.</p>
+<p><strong>HTML</strong>: one file, no external assets, no wasm — each slide is a
+<code>&lt;pre&gt;</code> of styled text. Arrow keys / hjkl / space walk the same 2-D
+grid as presenting (the URL hash tracks <code>#col.row</code>), <kbd>f</kbd>
+goes fullscreen, text scales to fit the window, and printing lays
+slides out one per page.</p>
+<h3>Snapshots: real terminal output on the web</h3>
+<p>If a deck has terminal blocks without baked snapshots, compiling
+requires choosing <code>--snapshots</code> or <code>--no-snapshots</code> — capturing
+<em>executes the deck's commands</em> on your machine, so deckhand won't
+guess (a deck whose terminals are all already snapshotted needs no
+flag). With <code>--snapshots</code>,
+each block runs in a real PTY, output settles
+(<code>--snapshot-wait-ms</code>, default 1500), and the screen is captured into
+the compiled file at <code>--snapshot-cols</code> width (default 80).
+<code>--snapshot-root</code> picks the working directory captures run in — it
+controls what shell prompts display — defaulting to the deck's
+directory. The capture lives inside the terminal fence as a
+<code>%%snapshot COLSxROWS</code> marker plus base64-encoded ANSI.</p>
+<p>Contexts that can't spawn PTYs — this site's presenter, the
+<a href="/v0.3.0/playground/">playground</a>, <a href="/v0.3.0/play/">play</a> — replay the capture through
+the same terminal emulator the native TUI uses, colors and all, marked
+with a <code>snapshot</code> hint on the border. Presenting natively always runs
+the command live and ignores the snapshot.</p>
+<h2>Architecture: presenters and providers</h2>
+<p>The presentation core (navigation, layout, theming, drawing) is
+platform-independent; each context plugs in a <strong>terminal provider</strong>
+that supplies the live innards of terminal blocks. The native TUI's
+provider spawns real PTYs; the browser build on this site provides
+placeholders. The <code>TerminalProvider</code> trait is public — a provider
+could just as well run commands over ssh, in a container, or replay a
+recording.</p>
+<h2>Limitations</h2>
+<ul>
+<li>images render as ASCII art, and only when presenting natively — the
+browser presenter shows a placeholder</li>
+<li>native presenting is unix-only (PTYs + unix sockets)</li>
+<li>the browser presenter can't run terminals — that's what the real one
+is for</li>
+</ul>
+
+  </main>
+  <footer>
+    <span class="seg">⚓ deckhand</span>
+    <p>a slide deck, in your terminal · MIT licensed · © 2026 Alex Kesling</p>
+    <select id="version-picker" data-version="0.3.0" aria-label="site version">
+      <option value="">v0.3.0</option>
+    </select>
+  </footer>
+  <script type="module" src="/v0.3.0/js/version.js"></script>
+  
+</body>
+</html>

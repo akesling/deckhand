@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>why · deckhand ⚓</title>
+  <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
+  <link rel="stylesheet" href="/v0.3.0/css/site.css">
+  <link rel="alternate" type="text/markdown" href="/v0.3.0/why/index.md">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
+  
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/v0.3.0/">deckhand <span class="anchor">⚓</span></a>
+    <nav>
+      <a href="/v0.3.0/why/" aria-current="page"><span class="n">1:</span>why</a>
+      <a href="/v0.3.0/getting-started/"><span class="n">2:</span>getting started</a>
+      <a href="/v0.3.0/docs/"><span class="n">3:</span>docs</a>
+      <a href="/v0.3.0/playground/"><span class="n">4:</span>playground</a>
+      <a href="/v0.3.0/play/"><span class="n">5:</span>play</a>
+      <a href="https://github.com/akesling/deckhand"><span class="n">6:</span>source</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Why deckhand?</h1>
+<h2>Because your demo <em>is</em> the talk</h2>
+<p>Most technical talks orbit a terminal: a REPL, a build, a deploy, a
+<code>curl</code>. The usual workflow — slides in one app, terminal in another,
+cmd-tab in between, font size wrong, window in the wrong place — makes
+the most important part of the talk the most fragile.</p>
+<p>deckhand inverts that. Slides render <em>in</em> the terminal, and terminals
+embed <em>in</em> the slides. A fenced block like</p>
+<pre><code class="language-markdown">```terminal rows=10
+python3 -q
+```
+</code></pre>
+<p>is a real PTY: the slide shows the command until you run it with a
+keystroke — nothing executes without consent — and once running it
+keeps going while you present other slides. Focus it (<code>t</code>), type into
+it, scroll its history, restart it (<code>R</code>) if the demo goes sideways.
+Kick off a long build on slide 3, come back to the result on slide 12.</p>
+<h2>Because talks aren't linear</h2>
+<p>Questions don't arrive in slide order. deckhand decks are a <strong>grid</strong>:
+columns are your topics (earlier / later), and each column can go
+<strong>deeper</strong> (<code>--</code>) into detail you only show if someone asks. The main
+thread of your talk stays tight; the weeds are one keystroke down.</p>
+<p>The overview (<code>o</code>) shows the whole grid with short jump codes — type
+<code>fd</code> and you're on the architecture slide, no arrow-key spelunking.</p>
+<h2>Because plain text wins</h2>
+<p>A deck is a markdown file. It diffs, it reviews, it lives next to the
+code it presents, and it renders fine on GitHub. There's no export step,
+no browser, no cloud account. For bigger talks, a JSON manifest lays out
+one markdown file per slide — and <code>deckhand compile</code> flattens it back to
+one file you can paste into a gist.</p>
+<p>Then anyone can run your deck with one command:</p>
+<pre><code class="language-sh">deckhand https://gist.github.com/you/abc123
+</code></pre>
+<p>And when someone insists on &quot;just send the slides&quot;, <code>deckhand compile</code>
+typesets the same deck to a PDF or a single static HTML page — same
+layout engine, one page per slide, real selectable text.</p>
+<h2>Because presenting well needs a second screen</h2>
+<p><code>deckhand notes</code> in another terminal (a tmux pane, a second window, a
+laptop over ssh) follows the presenter live: current slide, your private
+notes, what's next, and a talk timer. Notes are just the part of each
+slide after a <code>???</code> line — invisible to the audience.</p>
+<h2>What deckhand is not</h2>
+<ul>
+<li><strong>Not a pixel-perfect design tool.</strong> It's a terminal; typography is
+monospace and proud of it.</li>
+<li><strong>Not a web framework.</strong> The <a href="/v0.3.0/play/">browser presenter</a> exists for
+sharing and this site's demos, but the real thing — live PTYs
+included — runs where you already live: the terminal.</li>
+</ul>
+<p><a href="/v0.3.0/getting-started/">Get started →</a></p>
+
+  </main>
+  <footer>
+    <span class="seg">⚓ deckhand</span>
+    <p>a slide deck, in your terminal · MIT licensed · © 2026 Alex Kesling</p>
+    <select id="version-picker" data-version="0.3.0" aria-label="site version">
+      <option value="">v0.3.0</option>
+    </select>
+  </footer>
+  <script type="module" src="/v0.3.0/js/version.js"></script>
+  
+</body>
+</html>

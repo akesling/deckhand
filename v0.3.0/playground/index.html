@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>playground · deckhand ⚓</title>
+  <meta name="description" content="deckhand presents markdown slide decks as a TUI — with live embedded terminals, a 2-D slide grid, and presenter notes.">
+  <link rel="stylesheet" href="/v0.3.0/css/site.css">
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚓</text></svg>">
+  <link rel="stylesheet" href="/v0.3.0/css/xterm.css">
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/v0.3.0/">deckhand <span class="anchor">⚓</span></a>
+    <nav>
+      <a href="/v0.3.0/why/"><span class="n">1:</span>why</a>
+      <a href="/v0.3.0/getting-started/"><span class="n">2:</span>getting started</a>
+      <a href="/v0.3.0/docs/"><span class="n">3:</span>docs</a>
+      <a href="/v0.3.0/playground/" aria-current="page"><span class="n">4:</span>playground</a>
+      <a href="/v0.3.0/play/"><span class="n">5:</span>play</a>
+      <a href="https://github.com/akesling/deckhand"><span class="n">6:</span>source</a>
+    </nav>
+  </header>
+  <main class="wide">
+    
+<h1>Playground</h1>
+
+<p>Write a deck on the left; the terminal presents it live — the same
+deckhand core, compiled to WebAssembly. Your draft is kept in this
+browser. <button id="pg-reset" class="linklike">reset to the example</button></p>
+
+<div class="playground">
+  <div>
+    <div class="tui-block" data-title="deckhand · your deck">
+      <div class="terminal-frame playground-frame" id="pg-terminal"></div>
+    </div>
+    <div class="terminal-caption" id="pg-caption"></div>
+  </div>
+  <textarea id="pg-editor" spellcheck="false" autocomplete="off" aria-label="deck markdown editor"></textarea>
+</div>
+<p id="pg-status" class="pg-status"></p>
+
+<details class="gist-tools">
+  <summary>save / load via gist</summary>
+  <form id="pg-gist-load-form" class="play-form">
+    <input type="url" id="pg-gist-url" placeholder="https://gist.github.com/you/abc123" autocomplete="off" spellcheck="false">
+    <button type="submit">load</button>
+  </form>
+  <form id="pg-gist-save-form" class="play-form">
+    <input type="password" id="pg-gh-token" placeholder="GitHub token (gist scope only)" autocomplete="off">
+    <label class="remember"><input type="checkbox" id="pg-token-remember"> remember</label>
+    <button type="submit">save as new gist</button>
+    <button type="button" id="pg-copy" class="secondary-btn">copy markdown</button>
+  </form>
+  <p class="fineprint">Saving creates a <em>secret</em> gist through the GitHub API with your
+  token — it needs only the <code>gist</code> scope
+  (<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">create one here</a>)
+  and never leaves your browser except to call GitHub. “Remember” stores it in this browser's
+  localStorage. No token? <em>copy markdown</em> and paste at gist.github.com/new. Loading works
+  token-free for public gists, including multi-file manifest gists (flattened into the editor).</p>
+</details>
+
+<p class="hint-bar">click the terminal, then <kbd>space</kbd> next ·
+<kbd>o</kbd> overview · <kbd>↓</kbd>/<kbd>↑</kbd> depth — the editor keeps
+your slide position while you type</p>
+
+  </main>
+  <footer>
+    <span class="seg">⚓ deckhand</span>
+    <p>a slide deck, in your terminal · MIT licensed · © 2026 Alex Kesling</p>
+    <select id="version-picker" data-version="0.3.0" aria-label="site version">
+      <option value="">v0.3.0</option>
+    </select>
+  </footer>
+  <script type="module" src="/v0.3.0/js/version.js"></script>
+  <script type="module" src="/v0.3.0/js/playground.js"></script>
+</body>
+</html>
