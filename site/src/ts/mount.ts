@@ -116,7 +116,7 @@ export function mountDeck(
       ev.preventDefault();
       return false;
     }
-    deck.key(ev.key, ev.ctrlKey, ev.shiftKey);
+    deck.key(ev.key, ev.ctrlKey, ev.altKey, ev.shiftKey);
     paint();
     ev.preventDefault();
     return false;
@@ -188,7 +188,7 @@ export function mountDeck(
     const isSwipe = Math.abs(dx) >= 48 && Math.abs(dx) > 1.5 * Math.abs(dy);
     const isTap = Math.abs(dx) < 12 && Math.abs(dy) < 12 && elapsed < 350;
     if (!isSwipe && !isTap) return;
-    deck.key(" ", false, isSwipe && dx > 0); // swipe right = back
+    deck.key(" ", false, false, isSwipe && dx > 0); // swipe right = back
     paint();
     // No synthetic click: a tap shouldn't focus the hidden textarea
     // and summon the platform keyboard.

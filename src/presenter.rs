@@ -517,6 +517,38 @@ fn split_hit(
 /// `rows + STATUS_ROWS` and typeset only the top `rows` rows.
 pub const STATUS_ROWS: u16 = 1;
 
+/// The vertical layout of a slide's stacked items within its box.
+struct StackLayout {
+    /// Every item's resolved height, fills included.
+    heights: Vec<u16>,
+    /// Rows the whole stack draws — heights plus one blank gap row
+    /// between items — capped at 2048 (it bounds the offscreen scroll
+    /// buffer; no sane slide is taller).
+    total: u16,
+    /// How far `total` overruns the box; 0 when everything fits.
+    overflow: u16,
+}
+
+/// Pure slide-stack math: items with fixed heights keep them,
+/// fill-height items (`None`) split the leftover space evenly but
+/// never drop below 7 rows.
+fn stack_layout(item_heights: &[Option<u16>], box_h: u16) -> StackLayout {
+    let gaps = item_heights.len().saturating_sub(1) as u32;
+    let fixed: u32 = item_heights.iter().flatten().map(|&h| u32::from(h)).sum();
+    let nfill = item_heights.iter().filter(|h| h.is_none()).count() as u32;
+    let fill_h = u32::from(box_h)
+        .saturating_sub(fixed + gaps)
+        .checked_div(nfill)
+        .map_or(0, |h| h.max(7)) as u16;
+    let heights: Vec<u16> = item_heights.iter().map(|h| h.unwrap_or(fill_h)).collect();
+    let total = (heights.iter().map(|&h| u32::from(h)).sum::<u32>() + gaps).min(2048) as u16;
+    StackLayout {
+        heights,
+        overflow: total.saturating_sub(box_h),
+        total,
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Slide,
@@ -1351,22 +1383,14 @@ impl<P: TerminalProvider> Presenter<P> {
             return;
         }
 
-        let gaps = items.len().saturating_sub(1) as u16;
-        let fixed: u16 = items.iter().filter_map(|(h, _)| *h).sum();
-        let nfill = items.iter().filter(|(h, _)| h.is_none()).count() as u16;
-        let fill_h = box_h
-            .saturating_sub(fixed + gaps)
-            .checked_div(nfill)
-            .map_or(0, |h| h.max(7));
-        let heights: Vec<u16> = items.iter().map(|(h, _)| h.unwrap_or(fill_h)).collect();
         // Content taller than the box scrolls: everything below draws
         // into an offscreen buffer and the scrolled window is blitted
-        // into the box (a pinned title stays put above it). The cap
-        // only bounds the offscreen allocation — no sane slide is
-        // 2048 rows tall.
-        let total =
-            (heights.iter().map(|&h| u32::from(h)).sum::<u32>() + u32::from(gaps)).min(2048) as u16;
-        let overflow = total.saturating_sub(box_h);
+        // into the box (a pinned title stays put above it).
+        let StackLayout {
+            heights,
+            total,
+            overflow,
+        } = stack_layout(&items.iter().map(|(h, _)| *h).collect::<Vec<_>>(), box_h);
         self.slide_page = box_h;
         self.slide_overflow = overflow;
         self.slide_scroll = self.slide_scroll.min(overflow);
@@ -2294,6 +2318,26 @@ mod tests {
         p.on_key(KeyPress::plain(Key::Char('t')));
         p.on_key(KeyPress::plain(Key::Char('y')));
         assert_eq!(p.focus, Some(0));
+    }
+
+    #[test]
+    fn stack_layout_math() {
+        // Fixed items keep their heights; total counts the gap rows.
+        let l = stack_layout(&[Some(4), Some(6)], 20);
+        assert_eq!(
+            (l.heights.as_slice(), l.total, l.overflow),
+            (&[4, 6][..], 11, 0)
+        );
+        // Fills split the leftover space evenly after fixed + gaps.
+        let l = stack_layout(&[Some(5), None, None], 25);
+        assert_eq!(l.heights, [5, 9, 9]);
+        // Fills never drop below 7 rows, even in an overfull box…
+        let l = stack_layout(&[Some(20), None], 10);
+        assert_eq!(l.heights[1], 7);
+        assert_eq!(l.overflow, l.total - 10);
+        // …and the total is capped so the scroll buffer stays bounded.
+        let l = stack_layout(&[Some(u16::MAX), Some(u16::MAX)], 10);
+        assert_eq!(l.total, 2048);
     }
 
     fn tall_deck() -> String {

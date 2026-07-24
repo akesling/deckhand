@@ -365,6 +365,155 @@ mod tests {
         assert!(!html.contains("src=") && !html.contains("href="));
     }
 
+    /// The inline script's navigation, transcribed line for line. The
+    /// parity test below pins the exact JS source this mirrors — edit
+    /// one and the other must follow.
+    struct JsNav {
+        cols: Vec<usize>,
+        col: usize,
+        row: usize,
+        mem: Vec<usize>,
+    }
+
+    impl JsNav {
+        fn new(cols: Vec<usize>) -> Self {
+            let mem = vec![0; cols.len()];
+            JsNav {
+                cols,
+                col: 0,
+                row: 0,
+                mem,
+            }
+        }
+
+        fn goto_(&mut self, c: isize, r: isize) {
+            self.col = c.clamp(0, self.cols.len() as isize - 1) as usize;
+            self.row = r.clamp(0, self.cols[self.col] as isize - 1) as usize;
+            self.mem[self.col] = self.row;
+        }
+
+        fn key(&mut self, key: &str) {
+            let (col, row) = (self.col as isize, self.row as isize);
+            match key {
+                "ArrowLeft" | "h" => {
+                    if col > 0 {
+                        self.goto_(col - 1, self.mem[self.col - 1] as isize);
+                    }
+                }
+                "ArrowRight" | "l" => {
+                    if self.col + 1 < self.cols.len() {
+                        self.goto_(col + 1, self.mem[self.col + 1] as isize);
+                    }
+                }
+                "ArrowDown" | "j" => self.goto_(col, row + 1),
+                "ArrowUp" | "k" => self.goto_(col, row - 1),
+                " " | "n" => {
+                    if self.row + 1 < self.cols[self.col] {
+                        self.goto_(col, row + 1);
+                    } else if self.col + 1 < self.cols.len() {
+                        self.goto_(col + 1, 0);
+                    }
+                }
+                "Backspace" | "p" => {
+                    if self.row > 0 {
+                        self.goto_(col, row - 1);
+                    } else if self.col > 0 {
+                        self.goto_(col - 1, self.cols[self.col - 1] as isize - 1);
+                    }
+                }
+                "g" => self.goto_(0, 0),
+                "G" => self.goto_(self.cols.len() as isize - 1, 0),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn inline_nav_matches_the_presenter() {
+        use crate::presenter::{Key, KeyPress};
+
+        let src = "# a\n---\n# b\n--\n## b2\n--\n### b3\n---\n# c\n--\n## c2\n";
+        let deck = deck::parse(src, "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], SnapshotProvider::default()).unwrap();
+        let mut js = JsNav::new(vec![1, 3, 2]);
+
+        let tui_key = |k: &str| match k {
+            "ArrowLeft" => Key::Left,
+            "ArrowRight" => Key::Right,
+            "ArrowDown" => Key::Down,
+            "ArrowUp" => Key::Up,
+            "Backspace" => Key::Backspace,
+            other => Key::Char(other.chars().next().unwrap()),
+        };
+        // Every bound key, exercised across clamps, depth memory, and
+        // the depth-first walk — including a full space-walk to the end.
+        let script = [
+            "l",
+            "j",
+            "j",
+            " ",
+            "h",
+            "k",
+            "G",
+            "p",
+            "g",
+            "ArrowRight",
+            "ArrowDown",
+            "ArrowUp",
+            "l",
+            "j",
+            "Backspace",
+            "h",
+            "n",
+            "n",
+            "n",
+            "n",
+            "n",
+            "n",
+            "n",
+            " ",
+            "p",
+            "G",
+            "j",
+            "k",
+            "g",
+            "h",
+        ];
+        for k in script {
+            js.key(k);
+            p.on_key(KeyPress::plain(tui_key(k)));
+            assert_eq!(
+                p.position(),
+                (js.col, js.row),
+                "presenter and inline script diverged after {k:?}"
+            );
+        }
+
+        // Pin the JS lines JsNav transcribes; a nav edit must fail here.
+        let html = html_for(src);
+        for line in [
+            r#"function goto_(c,r){"#,
+            r#"col=Math.max(0,Math.min(c,COLS.length-1));"#,
+            r#"row=Math.max(0,Math.min(r,COLS[col]-1));"#,
+            r#"mem[col]=row;show();"#,
+            r#"function next(){if(row+1<COLS[col])goto_(col,row+1);else if(col+1<COLS.length)goto_(col+1,0)}"#,
+            r#"function prev(){if(row>0)goto_(col,row-1);else if(col>0)goto_(col-1,COLS[col-1]-1)}"#,
+            r#"case"ArrowLeft":case"h":if(col>0)goto_(col-1,mem[col-1]);break;"#,
+            r#"case"ArrowRight":case"l":if(col+1<COLS.length)goto_(col+1,mem[col+1]);break;"#,
+            r#"case"ArrowDown":case"j":goto_(col,row+1);break;"#,
+            r#"case"ArrowUp":case"k":goto_(col,row-1);break;"#,
+            r#"case" ":case"n":next();break;"#,
+            r#"case"Backspace":case"p":prev();break;"#,
+            r#"case"g":goto_(0,0);break;"#,
+            r#"case"G":goto_(COLS.length-1,0);break;"#,
+        ] {
+            assert!(
+                html.contains(line),
+                "nav script changed — update JsNav to match: missing {line:?}"
+            );
+        }
+    }
+
     #[test]
     fn styles_are_interned_and_escaped() {
         let html = html_for("# t\n`a < b & c`\n*same style*\n\n*same style*\n");

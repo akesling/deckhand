@@ -8,29 +8,35 @@ pub const JUMP_KEYS: &[char] = &[
     'p',
 ];
 
-/// Hint codes for `n` slides: single letters while they last, otherwise
-/// uniform two-letter codes (no prefix ambiguity either way).
+/// Hint codes for `n` slides: single letters while they last, then
+/// uniform two-letter codes, three past 400, and so on — always one
+/// code per slide, always uniform length (so no prefix ambiguity).
 ///
 /// ```
 /// use deckhand::hints::jump_codes;
 ///
 /// assert_eq!(jump_codes(3), ["a", "s", "d"]);
 /// assert_eq!(jump_codes(25)[0], "aa"); // >20 slides: two-letter codes
+/// assert_eq!(jump_codes(401).len(), 401); // >400: three letters
 /// ```
 pub fn jump_codes(n: usize) -> Vec<String> {
-    if n <= JUMP_KEYS.len() {
-        return JUMP_KEYS.iter().take(n).map(char::to_string).collect();
+    let k = JUMP_KEYS.len();
+    let mut len = 1usize;
+    let mut cap = k;
+    while cap < n {
+        len += 1;
+        cap = cap.saturating_mul(k);
     }
-    let mut out = Vec::with_capacity(n);
-    'outer: for a in JUMP_KEYS {
-        for b in JUMP_KEYS {
-            if out.len() >= n {
-                break 'outer;
+    (0..n)
+        .map(|mut i| {
+            let mut code = vec![' '; len];
+            for slot in code.iter_mut().rev() {
+                *slot = JUMP_KEYS[i % k];
+                i /= k;
             }
-            out.push(format!("{a}{b}"));
-        }
-    }
-    out
+            code.into_iter().collect()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -39,7 +45,7 @@ mod tests {
 
     #[test]
     fn jump_codes_are_unique_and_avoid_nav_keys() {
-        for n in [1, 5, 20, 21, 100, 400] {
+        for n in [1, 5, 20, 21, 100, 400, 401, 1000] {
             let codes = jump_codes(n);
             assert_eq!(codes.len(), n);
             let unique: std::collections::HashSet<_> = codes.iter().collect();
@@ -60,5 +66,13 @@ mod tests {
         let codes = jump_codes(21);
         assert!(codes.iter().all(|c| c.chars().count() == 2));
         assert_eq!(codes[0], "aa");
+        // the two-letter ordering matches the original nested-loop
+        // enumeration: all of a?, then all of s?, …
+        assert_eq!(jump_codes(25)[1], "as");
+        assert_eq!(jump_codes(25)[20], "sa");
+        // absurd decks get three letters instead of silently missing codes
+        let codes = jump_codes(500);
+        assert!(codes.iter().all(|c| c.chars().count() == 3));
+        assert_eq!(codes[0], "aaa");
     }
 }

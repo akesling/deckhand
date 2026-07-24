@@ -4,7 +4,7 @@
 //! snapshot-consent question ([`load`]), and — for the page-based
 //! exporters (PDF, HTML) — render each slide through the shared
 //! [`Presenter`](crate::presenter::Presenter) into an offscreen cell
-//! grid ([`render_pages`]) and write the result ([`write`]). This
+//! grid ([`render_pages`]) and write the result ([`write()`]). This
 //! module is that pipeline, once; `compile`, `pdf`, and `html` supply
 //! only their format-specific emission.
 

@@ -106,12 +106,12 @@ impl WebDeck {
     }
 
     /// Handle a DOM `KeyboardEvent`: its `.key` plus modifier flags.
-    pub fn key(&mut self, key: &str, ctrl: bool, shift: bool) {
+    pub fn key(&mut self, key: &str, ctrl: bool, alt: bool, shift: bool) {
         if let Some(key) = dom_key(key) {
             self.presenter.on_key(KeyPress {
                 key,
                 ctrl,
-                alt: false,
+                alt,
                 shift,
             });
         }
