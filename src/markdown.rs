@@ -523,16 +523,35 @@ impl<'t> Renderer<'t> {
                 widths[i] = widths[i].max(cell.width()).min(40);
             }
         }
+        // Fit the table into the slide: natural widths shrink
+        // widest-first until columns and their two-space gutters fit
+        // (down to a floor of 3 — past that the table clips like any
+        // over-wide line, but that takes 10+ columns).
+        let gutters = 2 * ncols.saturating_sub(1);
+        let budget = self.width.saturating_sub(gutters);
+        while widths.iter().sum::<usize>() > budget {
+            let widest = widths
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, w)| **w)
+                .map(|(i, _)| i)
+                .expect("ncols > 0");
+            if widths[widest] <= 3 {
+                break;
+            }
+            widths[widest] -= 1;
+        }
         let pad = |cell: &str, i: usize| -> String {
             let w = widths[i];
-            let cw = cell.width().min(w);
-            let cell: String = {
-                // truncate to column width
+            // Truncate to the column, marking the cut with `…`.
+            let truncated = cell.width() > w;
+            let limit = if truncated { w.saturating_sub(1) } else { w };
+            let mut cell = {
                 let mut out = String::new();
                 let mut acc_w = 0;
                 for ch in cell.chars() {
                     let chw = UnicodeWidthStr::width(ch.to_string().as_str());
-                    if acc_w + chw > w {
+                    if acc_w + chw > limit {
                         break;
                     }
                     out.push(ch);
@@ -540,7 +559,10 @@ impl<'t> Renderer<'t> {
                 }
                 out
             };
-            let fill = w - cw;
+            if truncated && w > 0 {
+                cell.push('…');
+            }
+            let fill = w.saturating_sub(cell.width());
             match acc.aligns.get(i) {
                 Some(MdAlign::Right) => format!("{}{}", " ".repeat(fill), cell),
                 Some(MdAlign::Center) => {
@@ -600,6 +622,24 @@ mod tests {
         for line in &text.lines {
             assert!(line.width() <= 20, "line too wide: {:?}", line);
         }
+    }
+
+    #[test]
+    fn wide_tables_shrink_to_the_width_budget() {
+        let md = "| alpha alpha alpha | beta beta beta | gamma gamma gamma | delta delta delta |\n\
+                  |---|---|---|---|\n\
+                  | one | two | three | four |\n";
+        let text = r(md, 40);
+        for line in &text.lines {
+            assert!(line.width() <= 40, "table walked off-slide: {line:?}");
+        }
+        // The cut is marked, not silent.
+        assert!(
+            text.lines
+                .iter()
+                .any(|l| l.spans.iter().any(|s| s.content.contains('…'))),
+            "no truncation marker in shrunken table"
+        );
     }
 
     #[test]

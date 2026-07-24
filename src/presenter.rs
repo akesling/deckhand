@@ -826,6 +826,13 @@ impl<P: TerminalProvider> Presenter<P> {
         }
     }
 
+    /// Whether the last-drawn frame contains terminal panes (whose
+    /// content changes between input events). Front ends can skip
+    /// redrawing static frames when this is false.
+    pub fn has_visible_terminals(&self) -> bool {
+        !self.term_rects.is_empty()
+    }
+
     /// Move the view into an overflowing slide; clamped to the content.
     fn scroll_slide(&mut self, delta: i32) {
         self.slide_scroll =

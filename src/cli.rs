@@ -87,7 +87,8 @@ enum Cmd {
         /// Compile without running terminal blocks or baking captures
         #[arg(long)]
         no_snapshots: bool,
-        /// How long to let each command run before capturing (ms)
+        /// Longest to let each command run before capturing (ms);
+        /// commands that exit capture as soon as their output settles
         #[arg(long, default_value_t = crate::snapshot::DEFAULT_WAIT_MS)]
         snapshot_wait_ms: u64,
         /// Terminal width for captures

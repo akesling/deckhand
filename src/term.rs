@@ -74,7 +74,10 @@ impl TermSession {
                             exited.store(true, Ordering::SeqCst);
                             break;
                         }
-                        Ok(n) => parser.lock().unwrap().process(&buf[..n]),
+                        Ok(n) => parser
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .process(&buf[..n]),
                     }
                 }
             });
@@ -97,11 +100,19 @@ impl TermSession {
         self.exited.load(Ordering::SeqCst)
     }
 
+    /// Lock the emulator, shrugging off poison: the reader thread holds
+    /// no invariants worth killing a presentation over.
+    pub fn parser_lock(&self) -> std::sync::MutexGuard<'_, vt100::Parser> {
+        self.parser
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Send bytes to the child's stdin; also snaps scrollback to live.
     pub fn write_input(&mut self, bytes: &[u8]) {
         // Typing jumps back to the live view, like a normal terminal.
         {
-            let mut p = self.parser.lock().unwrap();
+            let mut p = self.parser_lock();
             if p.screen().scrollback() > 0 {
                 p.set_scrollback(0);
             }
@@ -112,7 +123,7 @@ impl TermSession {
 
     /// Move the scrollback view; positive = further into history.
     pub fn scroll_lines(&mut self, delta: isize) {
-        let mut p = self.parser.lock().unwrap();
+        let mut p = self.parser_lock();
         let cur = p.screen().scrollback() as isize;
         let new = (cur + delta).max(0) as usize;
         p.set_scrollback(new);
@@ -123,7 +134,7 @@ impl TermSession {
     /// otherwise through the local history view.
     pub fn wheel(&mut self, up: bool, col: u16, row: u16) {
         let to_child = {
-            let p = self.parser.lock().unwrap();
+            let p = self.parser_lock();
             wheel_bytes(p.screen(), up, col, row)
         };
         match to_child {
@@ -137,7 +148,7 @@ impl TermSession {
     /// semantics).
     pub fn click(&mut self, col: u16, row: u16) -> bool {
         let report = {
-            let p = self.parser.lock().unwrap();
+            let p = self.parser_lock();
             click_bytes(p.screen(), col, row)
         };
         match report {
@@ -157,14 +168,14 @@ impl TermSession {
 
     /// How far into history the view currently is (0 = live).
     pub fn scroll_offset(&self) -> usize {
-        self.parser.lock().unwrap().screen().scrollback()
+        self.parser_lock().screen().scrollback()
     }
 
     /// (current offset, total history lines available). vt100 doesn't
     /// expose the used scrollback length, but `set_scrollback` clamps to
     /// it — so probe with a huge value and restore.
     pub fn scroll_info(&self) -> (usize, usize) {
-        let mut p = self.parser.lock().unwrap();
+        let mut p = self.parser_lock();
         let cur = p.screen().scrollback();
         p.set_scrollback(usize::MAX);
         let avail = p.screen().scrollback();
@@ -185,7 +196,7 @@ impl TermSession {
             pixel_width: 0,
             pixel_height: 0,
         });
-        self.parser.lock().unwrap().set_size(rows, cols);
+        self.parser_lock().set_size(rows, cols);
     }
 
     /// Reap the child once its output stream has closed, so commands

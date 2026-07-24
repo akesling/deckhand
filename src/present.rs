@@ -141,7 +141,7 @@ impl TerminalProvider for PtyProvider {
             return;
         }
         if let Some(session) = self.sessions.get(&block.id) {
-            let parser = session.parser.lock().unwrap();
+            let parser = session.parser_lock();
             PseudoTerminal::new(parser.screen()).render(inner, buf);
         }
     }
@@ -273,13 +273,27 @@ fn event_loop(
     let mut watcher = watch.then(|| Watcher::new(input));
     let mut last_watch = std::time::Instant::now();
 
+    // A static slide doesn't change between events — skip its redraws
+    // (and poll less often) so an idle deckhand costs ~nothing. Slides
+    // showing terminals keep the ~30 fps cadence: PTY output arrives
+    // whenever it likes.
+    let mut dirty = true;
     while !presenter.should_quit() {
-        terminal.draw(|f| {
-            let area = f.area();
-            presenter.draw(area, f.buffer_mut());
-        })?;
+        if dirty || presenter.has_visible_terminals() {
+            terminal.draw(|f| {
+                let area = f.area();
+                presenter.draw(area, f.buffer_mut());
+            })?;
+            dirty = false;
+        }
         presenter.provider.reap_exited();
-        if event::poll(Duration::from_millis(33))? {
+        let timeout = if presenter.has_visible_terminals() {
+            Duration::from_millis(33)
+        } else {
+            Duration::from_millis(100)
+        };
+        if event::poll(timeout)? {
+            dirty = true;
             let before = presenter.position();
             // Drain everything pending before redrawing — a paste into a
             // focused terminal arrives as many events, and a full frame
@@ -316,6 +330,7 @@ fn event_loop(
             if w.changed() {
                 reload(presenter, input, w);
                 broadcast(server, presenter, started_at);
+                dirty = true;
             }
         }
     }

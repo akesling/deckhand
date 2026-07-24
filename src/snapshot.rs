@@ -24,7 +24,9 @@ pub const DEFAULT_COLS: u16 = 80;
 
 /// Capture settings for [`capture`].
 pub struct Options {
-    /// How long to let each command run before capturing.
+    /// The longest a command gets before its screen is captured.
+    /// Capture happens earlier when the command exits and its output
+    /// settles, so fast commands don't pay the full wait.
     pub wait: Duration,
     /// Capture width; height comes from each block (`fill` captures 24).
     pub cols: u16,
@@ -76,11 +78,7 @@ pub fn capture(deck: &mut Deck, deck_dir: &Path, opts: &Options) -> Result<()> {
                 continue;
             }
         };
-        std::thread::sleep(opts.wait);
-        let data = {
-            let parser = session.parser.lock().unwrap();
-            parser.screen().contents_formatted()
-        };
+        let data = settle(&session, opts.wait);
         session.kill();
         block.snapshot = Some(TermSnapshot {
             cols: opts.cols,
@@ -89,6 +87,33 @@ pub fn capture(deck: &mut Deck, deck_dir: &Path, opts: &Options) -> Result<()> {
         });
     }
     Ok(())
+}
+
+/// Poll the screen until output settles or `wait` runs out, then
+/// return the capture. "Settled" means the command has exited and two
+/// consecutive polls saw the same screen — a fast `printf` captures in
+/// ~100 ms instead of sitting out the full wait, while long-running
+/// commands (htop, a shell) always get the whole window to produce
+/// their real display.
+fn settle(session: &TermSession, wait: Duration) -> Vec<u8> {
+    const POLL: Duration = Duration::from_millis(50);
+    let deadline = std::time::Instant::now() + wait;
+    let mut last: Option<Vec<u8>> = None;
+    let mut quiet = 0u32;
+    loop {
+        std::thread::sleep(POLL);
+        let cur = session.parser_lock().screen().contents_formatted();
+        if last.as_deref() == Some(cur.as_slice()) {
+            quiet += 1;
+        } else {
+            quiet = 0;
+        }
+        let done = session.exited() && quiet >= 2;
+        if done || std::time::Instant::now() >= deadline {
+            return cur;
+        }
+        last = Some(cur);
+    }
 }
 
 #[cfg(test)]

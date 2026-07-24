@@ -35,7 +35,16 @@ impl NotesServer {
     /// Bind the socket (replacing a stale file) and start the accept and
     /// writer threads. The socket is removed on drop.
     pub fn start(path: PathBuf) -> Result<Self> {
-        // Stale socket from a previous run.
+        // A connectable socket means another presenter is live on it —
+        // don't silently steal its notes clients.
+        if UnixStream::connect(&path).is_ok() {
+            anyhow::bail!(
+                "another deckhand is already presenting on {} — give this one its own socket \
+                 with --socket",
+                path.display()
+            );
+        }
+        // Anything else on the path is a stale socket from a dead run.
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path)
             .with_context(|| format!("binding notes socket {}", path.display()))?;
@@ -98,5 +107,37 @@ impl NotesServer {
 impl Drop for NotesServer {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Binds real unix sockets; run explicitly with
+    /// `cargo test -- --ignored` (CI does).
+    #[test]
+    #[ignore = "binds a unix socket"]
+    fn refuses_to_steal_a_live_socket() {
+        // In-workspace rather than the system temp dir: unix-socket
+        // paths are capped at ~104 bytes, and sandboxes that confine
+        // builds to the workspace still allow binding here.
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/tmp");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("notes-{}.sock", std::process::id()));
+        let first = NotesServer::start(path.clone()).expect("first bind");
+        let err = match NotesServer::start(path.clone()) {
+            Err(e) => e,
+            Ok(_) => panic!("second presenter stole the live socket"),
+        };
+        assert!(
+            format!("{err:#}").contains("--socket"),
+            "unhelpful error: {err:#}"
+        );
+        drop(first);
+        // A stale socket file — bound once, listener long gone — is
+        // replaced without complaint.
+        drop(UnixListener::bind(&path).unwrap());
+        let _second = NotesServer::start(path).unwrap();
     }
 }
