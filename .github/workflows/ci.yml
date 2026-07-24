@@ -11,6 +11,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
+# Superseded pushes to the same PR cancel their in-flight runs; main
+# always runs to completion.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # All actions are pinned by commit SHA (the tag is a comment); the Rust
 # toolchain comes from rust-toolchain.toml, bun/node deps from bun.lock
 # via --frozen-lockfile, and cargo runs --locked — so CI builds exactly

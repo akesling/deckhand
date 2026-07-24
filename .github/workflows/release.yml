@@ -3,7 +3,8 @@ name: Release
 # Pushing a v* tag (scripts/release.sh does this) builds the site and
 # deploys it to Cloudflare Pages — production plus a permanent
 # branch-alias deployment for the tag, which is what the footer version
-# picker's versions.json links back to.
+# picker's versions.json links back to — and attaches prebuilt binaries
+# to a GitHub release (what https://deckhand.sh/install.sh fetches).
 #
 # Needs two repo secrets: CLOUDFLARE_API_TOKEN (Pages:Edit) and
 # CLOUDFLARE_ACCOUNT_ID. crates.io publishing stays local, in
@@ -16,6 +17,57 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  release:
+    name: github release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: create release for the tag
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --verify-tag \
+                 --title "deckhand ${GITHUB_REF_NAME}" --generate-notes
+
+  binaries:
+    name: binaries (${{ matrix.target }})
+    needs: release
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-14, target: aarch64-apple-darwin }
+          - { runner: macos-13, target: x86_64-apple-darwin }
+          - { runner: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: bin-${{ matrix.target }}
+      - name: build
+        run: cargo build --release --locked
+      - name: package
+        # Asset names carry no version so that
+        # releases/latest/download/… always resolves (install.sh).
+        run: |
+          _stage="$(mktemp -d)"
+          cp target/release/deckhand LICENSE README.md "${_stage}/"
+          tar -C "${_stage}" -czf "deckhand-${{ matrix.target }}.tar.gz" \
+            deckhand LICENSE README.md
+      - name: upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "deckhand-${{ matrix.target }}.tar.gz" --clobber
   site:
     name: deploy site
     runs-on: ubuntu-latest

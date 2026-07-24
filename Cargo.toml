@@ -11,7 +11,18 @@ documentation = "https://docs.rs/deckhand"
 readme = "README.md"
 keywords = ["presentation", "slides", "tui", "terminal", "markdown"]
 categories = ["command-line-utilities", "text-processing", "wasm"]
-include = ["src/**", "Cargo.toml", "README.md", "LICENSE", "examples/demo.md"]
+# Leading slashes anchor to the package root — unanchored patterns
+# match gitignore-style anywhere, pulling in site/node_modules files
+# with the same names.
+include = [
+    "/src/**",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/examples/demo.md",
+    "/examples/json-demo/**",
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

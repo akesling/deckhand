@@ -7,16 +7,25 @@ separate terminal.
 
 Built in Rust on [ratatui](https://ratatui.rs). The website (with a
 WebAssembly-powered in-browser demo and gist loader) lives in
-[`site/`](site/README.md).
+[`site/`](https://github.com/akesling/deckhand/tree/main/site).
+
+## Install
+
+```sh
+curl -fsSL https://deckhand.sh/install.sh | sh   # prebuilt binary (macOS/Linux)
+cargo install deckhand                           # or build from source
+```
+
+Binaries for macOS (arm64/x86_64) and Linux (x86_64/arm64) are also on
+[GitHub releases](https://github.com/akesling/deckhand/releases).
 
 ## Quick start
 
 ```sh
-cargo build --release
-./target/release/deckhand examples/demo.md
+deckhand https://deckhand.sh/decks/demo.md   # or any local .md file
 
 # in a second terminal (optional): live presenter notes
-./target/release/deckhand notes
+deckhand notes
 ```
 
 ## Deck format

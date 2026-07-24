@@ -23,10 +23,10 @@ cargo clippy --locked --lib --target wasm32-unknown-unknown -- -D warnings
 _shellcheck="${_root}/site/node_modules/shellcheck/bin/shellcheck"
 if [ -x "${_shellcheck}" ]; then
   echo "== shellcheck (vendored)"
-  "${_shellcheck}" --severity=style scripts/*.sh
+  "${_shellcheck}" --severity=style scripts/*.sh site/src/install.sh
 elif command -v shellcheck >/dev/null; then
   echo "== shellcheck (system)"
-  shellcheck --severity=style scripts/*.sh
+  shellcheck --severity=style scripts/*.sh site/src/install.sh
 else
   echo "== shellcheck skipped (run: bun install --cwd site)"
 fi

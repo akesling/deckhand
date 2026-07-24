@@ -7,18 +7,19 @@ title: getting started
 
 ## Install
 
-deckhand is a single Rust binary. With a Rust toolchain installed:
+deckhand is a single binary. Grab a prebuilt one (macOS arm64/x86_64,
+Linux x86_64/arm64):
 
 ```sh
-git clone https://github.com/akesling/deckhand
-cd deckhand
-cargo install --path .
+curl -fsSL https://deckhand.sh/install.sh | sh
 ```
 
-Try the bundled demo deck:
+…or build from source with a Rust toolchain: `cargo install deckhand`.
+
+Try the demo deck:
 
 ```sh
-deckhand examples/demo.md
+deckhand https://deckhand.sh/decks/demo.md
 ```
 
 `space` advances, `?` shows every key, `q` quits.

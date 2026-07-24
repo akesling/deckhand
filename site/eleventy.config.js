@@ -18,6 +18,8 @@ export default function (eleventyConfig) {
   // Cloudflare Pages header rules (CORS for versions.json).
   eleventyConfig.addPassthroughCopy({ "src/_headers": "_headers" });
   eleventyConfig.addPassthroughCopy({ "src/decks": "decks" });
+  // curl -fsSL https://deckhand.sh/install.sh | sh
+  eleventyConfig.addPassthroughCopy({ "src/install.sh": "install.sh" });
   eleventyConfig.addPassthroughCopy({ "dist/js": "js" });
   eleventyConfig.addPassthroughCopy({ "wasm/deckhand_bg.wasm": "wasm/deckhand_bg.wasm" });
   eleventyConfig.addPassthroughCopy({
