@@ -1,6 +1,6 @@
 [package]
 name = "deckhand"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Present markdown slide decks as a TUI — live embedded terminals, a 2-D slide grid, presenter notes, and a wasm presenter for the browser"

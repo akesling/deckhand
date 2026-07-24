@@ -5,7 +5,7 @@ version; for anything older than 0.2.0, the
 [git history](https://github.com/akesling/deckhand/commits/main) is
 the record.
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
