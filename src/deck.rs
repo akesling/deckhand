@@ -875,6 +875,11 @@ fn extract_title(body: &str) -> Option<String> {
                 return Some(title.to_string());
             }
         }
+        // An HTML comment renders as nothing, so it never titles a
+        // slide (compile emits `<!-- blank slide -->` markers).
+        if t.starts_with("<!--") && t.ends_with("-->") {
+            continue;
+        }
         if first_text.is_none() && !t.is_empty() {
             let cleaned: String = t
                 .trim_start_matches(['>', '-', '*', ' '])

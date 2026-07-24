@@ -191,10 +191,11 @@ fn fence_len(body: &str) -> usize {
 }
 
 /// Rewrite lines the parser would read as separators (outside code
-/// fences): bare runs of `-` become `***`, which renders as the same
-/// horizontal rule without splitting the deck; inside row cells
-/// (`in_row`), bare runs of `|` are backslash-escaped, which renders
-/// the same pipes without splitting the cell.
+/// fences). Each context has exactly one hazard: outside rows, bare
+/// runs of `-` would split slides, so they become `***` (the same
+/// horizontal rule); inside row cells (`in_row`) the emitted row fence
+/// already shields dashes, but bare runs of `|` would split cells, so
+/// they're backslash-escaped (the same rendered pipes).
 fn sanitize(src: &str, rewrites: &mut usize, in_row: bool) -> String {
     let mut out = Vec::new();
     let mut fence: deck::Fence = None;
@@ -212,7 +213,7 @@ fn sanitize(src: &str, rewrites: &mut usize, in_row: bool) -> String {
             out.push(line.to_string());
             continue;
         }
-        if t.len() >= 2 && t.chars().all(|c| c == '-') {
+        if !in_row && t.len() >= 2 && t.chars().all(|c| c == '-') {
             *rewrites += 1;
             out.push("***".to_string());
             continue;
