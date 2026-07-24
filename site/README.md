@@ -101,9 +101,11 @@ tag (manual `wrangler` runs) are invisible to the picker.
 
 ### Backfilling a version that predates tagging
 
-To preserve an old release's docs after the fact (e.g. 0.2.0, shipped
-before any `v*` tag existed) — without pushing an old tag, which would
-run that tag's own Release workflow:
+0.1.0 and 0.2.0 were deployed manually (their `v0-1-0`/`v0-2-0`
+aliases exist), so they're listed via `versions-known.txt` directly.
+If an old version's alias is ever *missing*, rebuild and deploy it
+after the fact — without pushing an old tag, which would run that
+tag's own Release workflow:
 
 ```sh
 git worktree add /tmp/deckhand-0.2.0 <the release's commit>

@@ -1,7 +1,8 @@
 # Versions whose docs are deployed as permanent Cloudflare branch
-# aliases but predate v* git tags (manual backfills). One bare version
-# per line; build-site.sh merges these into versions.json alongside
-# the tag list. Only add a version AFTER its alias actually exists —
-# the footer picker links straight to it. Example:
-#
-# 0.2.0
+# aliases but predate v* git tags (0.1.0 and 0.2.0 were deployed
+# manually, before the repo had any tags). One bare version per line;
+# build-site.sh merges these into versions.json alongside the tag
+# list. Only add a version AFTER its alias actually exists — the
+# footer picker links straight to it.
+0.1.0
+0.2.0
