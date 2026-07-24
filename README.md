@@ -251,6 +251,7 @@ with `--no-watch`. Remote decks aren't watched.
 | `space`, `n` | next slide (walks every column depth-first) |
 | `shift-space`, `backspace`, `p` | previous slide |
 | `g`, `G` | first / last column |
+| `pgdn`, `pgup` | scroll a slide taller than the window, then advance |
 | `o` | overview grid — each slide shows a short code; type it to jump (or `hjkl` + `enter`, or click) |
 | `/` | search slides — type to filter (titles, body, notes, commands), `↓`/`↑` select, `enter` jumps, `esc` closes |
 | `1`-`9` | select a terminal pane (marked with `▸`) |
@@ -274,7 +275,8 @@ release, and in the overview click a slide to jump to it. The
 **scroll-wheel** over a terminal reaches whatever wants it: mouse-aware
 apps (htop) get real wheel events, full-screen apps without mouse
 reporting (less, vim) get arrow keys, and plain shells scroll
-deckhand's own history view.
+deckhand's own history view. Off-terminal, the wheel scrolls a slide
+taller than the window (`▲`/`▼` in the corners mark clipped content).
 
 ## Presenting from a URL or gist
 
@@ -521,7 +523,6 @@ after review.
 
 ## Current limitations
 
-- Slides taller than the window are clipped, not scrolled
 - Images render as ASCII art, and only when presenting natively — the
   browser presenter shows a placeholder
 - Unix only (PTYs + unix sockets)

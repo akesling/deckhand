@@ -303,6 +303,7 @@ back to a normal H1 — try it on the title slide in the
 | <kbd>space</kbd>, <kbd>n</kbd> | next slide (walks every column depth-first) |
 | <kbd>shift-space</kbd>, <kbd>backspace</kbd>, <kbd>p</kbd> | previous slide |
 | <kbd>g</kbd>, <kbd>G</kbd> | first / last column |
+| <kbd>pgdn</kbd>/<kbd>pgup</kbd> | scroll a slide taller than the window, then advance |
 | <kbd>o</kbd> | overview — type a slide's jump code, or <kbd>hjkl</kbd> + <kbd>enter</kbd>, or click |
 | <kbd>/</kbd> | search slides — type to filter (titles, body, notes, commands), <kbd>↓</kbd>/<kbd>↑</kbd> select, <kbd>enter</kbd> jumps, <kbd>esc</kbd> closes |
 | <kbd>1</kbd>–<kbd>9</kbd> | select a terminal pane (marked with ▸) |
@@ -320,7 +321,8 @@ click outside to release, click a slide in the overview to jump. The
 scroll-wheel over a terminal reaches whatever wants it: mouse-aware
 apps (htop) get real wheel events, full-screen apps without mouse
 reporting (less, vim) get arrow keys, and plain shells scroll
-deckhand's own history view.
+deckhand's own history view. Off-terminal, the wheel scrolls a slide
+taller than the window (▲/▼ in the corners mark clipped content).
 
 On slides with several terminals, each pane shows its number and ▸
 marks the one <kbd>t</kbd> will focus.
@@ -448,7 +450,6 @@ recording.
 
 ## Limitations
 
-- slides taller than the window are clipped, not scrolled
 - images render as ASCII art, and only when presenting natively — the
   browser presenter shows a placeholder
 - native presenting is unix-only (PTYs + unix sockets)

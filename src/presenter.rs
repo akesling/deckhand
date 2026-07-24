@@ -547,6 +547,13 @@ pub struct Presenter<P: TerminalProvider> {
     search_input: String,
     /// A disabled terminal awaiting the presenter's `y` to run.
     pending_enable: Option<usize>,
+    /// Scroll offset into a slide taller than its box, in rows.
+    slide_scroll: u16,
+    /// How far the current slide overruns its box (0 = fits); set
+    /// during draw, consumed by the scroll keys.
+    slide_overflow: u16,
+    /// The current slide's box height, for page-sized scroll steps.
+    slide_page: u16,
     /// Extra line shown at the bottom of the help overlay (the native
     /// front end uses it for the notes-socket hint).
     pub help_footer: Option<String>,
@@ -578,6 +585,9 @@ impl<P: TerminalProvider> Presenter<P> {
             jump_input: String::new(),
             search_input: String::new(),
             pending_enable: None,
+            slide_scroll: 0,
+            slide_overflow: 0,
+            slide_page: 0,
             help_footer: None,
             quit: false,
         })
@@ -670,6 +680,7 @@ impl<P: TerminalProvider> Presenter<P> {
             self.depth_memory[col] = row;
             self.focus = None;
             self.pending_enable = None;
+            self.slide_scroll = 0;
         }
     }
 
@@ -764,8 +775,24 @@ impl<P: TerminalProvider> Presenter<P> {
             Key::Char('c') if key.ctrl => self.quit = true,
             Key::Char('q') => self.quit = true,
             Key::Char(' ') if key.shift => self.prev(),
-            Key::Char(' ') | Key::Char('n') | Key::PageDown => self.next(),
-            Key::Backspace | Key::Char('p') | Key::PageUp => self.prev(),
+            Key::Char(' ') | Key::Char('n') => self.next(),
+            // On a slide taller than the window, pgdn/pgup reveal the
+            // rest before advancing (space stays pure next-slide).
+            Key::PageDown => {
+                if self.slide_scroll < self.slide_overflow {
+                    self.scroll_slide(i32::from(self.slide_page / 2).max(1));
+                } else {
+                    self.next();
+                }
+            }
+            Key::Backspace | Key::Char('p') => self.prev(),
+            Key::PageUp => {
+                if self.slide_scroll > 0 {
+                    self.scroll_slide(-i32::from(self.slide_page / 2).max(1));
+                } else {
+                    self.prev();
+                }
+            }
             Key::Left | Key::Char('h') => {
                 if self.col > 0 {
                     self.goto(self.col - 1, self.depth_memory[self.col - 1]);
@@ -797,6 +824,12 @@ impl<P: TerminalProvider> Presenter<P> {
             Key::Char('R') => self.restart_terminal(),
             _ => {}
         }
+    }
+
+    /// Move the view into an overflowing slide; clamped to the content.
+    fn scroll_slide(&mut self, delta: i32) {
+        self.slide_scroll =
+            (i32::from(self.slide_scroll) + delta).clamp(0, i32::from(self.slide_overflow)) as u16;
     }
 
     /// The terminal `t` will focus on this slide.
@@ -1112,6 +1145,14 @@ impl<P: TerminalProvider> Presenter<P> {
                             m.x - r.x,
                             m.y - r.y,
                         );
+                    } else {
+                        // Off-terminal, the wheel moves an overflowing
+                        // slide (a no-op when everything fits).
+                        self.scroll_slide(if m.action == MouseAction::ScrollUp {
+                            -3
+                        } else {
+                            3
+                        });
                     }
                 }
             },
@@ -1294,19 +1335,39 @@ impl<P: TerminalProvider> Presenter<P> {
             .checked_div(nfill)
             .map_or(0, |h| h.max(7));
         let heights: Vec<u16> = items.iter().map(|(h, _)| h.unwrap_or(fill_h)).collect();
-        let total: u16 = heights.iter().sum::<u16>() + gaps;
+        // Content taller than the box scrolls: everything below draws
+        // into an offscreen buffer and the scrolled window is blitted
+        // into the box (a pinned title stays put above it). The cap
+        // only bounds the offscreen allocation — no sane slide is
+        // 2048 rows tall.
+        let total =
+            (heights.iter().map(|&h| u32::from(h)).sum::<u32>() + u32::from(gaps)).min(2048) as u16;
+        let overflow = total.saturating_sub(box_h);
+        self.slide_page = box_h;
+        self.slide_overflow = overflow;
+        self.slide_scroll = self.slide_scroll.min(overflow);
         let visible = total.min(box_h);
-        let mut y = body.y
+        let box_y = body.y
             + match theme.align_y {
                 VAlign::Top => 0,
                 VAlign::Center => body.height.saturating_sub(visible) / 2,
                 VAlign::Bottom => body.height.saturating_sub(visible),
             };
-        let bottom = y + visible;
+
+        let rects_from = self.term_rects.len();
+        let mut offscreen = (overflow > 0).then(|| Buffer::empty(Rect::new(x, 0, w, total)));
+        let (mut y, bottom) = match &offscreen {
+            Some(_) => (0, total),
+            None => (box_y, box_y + visible),
+        };
         for ((_, item), h) in items.into_iter().zip(heights) {
             if y >= bottom {
                 break;
             }
+            let target: &mut Buffer = match offscreen.as_mut() {
+                Some(b) => b,
+                None => &mut *buf,
+            };
             let h = h.min(bottom - y);
             let rect = Rect {
                 x,
@@ -1315,7 +1376,7 @@ impl<P: TerminalProvider> Presenter<P> {
                 height: h,
             };
             match item {
-                RenderItem::Text(text) => Paragraph::new(text).render(rect, buf),
+                RenderItem::Text(text) => Paragraph::new(text).render(rect, target),
                 RenderItem::Term(block) => {
                     self.provider.prepare(
                         &block,
@@ -1323,7 +1384,7 @@ impl<P: TerminalProvider> Presenter<P> {
                         h.saturating_sub(2).max(1),
                     );
                     self.term_rects.push((block.id, rect));
-                    self.draw_term(rect, &block, &theme, buf);
+                    self.draw_term(rect, &block, &theme, target);
                 }
                 RenderItem::Row(cells, cw) => {
                     let mut cx = rect.x;
@@ -1341,8 +1402,12 @@ impl<P: TerminalProvider> Presenter<P> {
                                 width: cw,
                                 height: ih,
                             };
+                            let target: &mut Buffer = match offscreen.as_mut() {
+                                Some(b) => b,
+                                None => &mut *buf,
+                            };
                             match item {
-                                CellItem::Text(text) => Paragraph::new(text).render(r, buf),
+                                CellItem::Text(text) => Paragraph::new(text).render(r, target),
                                 CellItem::Term(block) => {
                                     self.provider.prepare(
                                         &block,
@@ -1350,7 +1415,7 @@ impl<P: TerminalProvider> Presenter<P> {
                                         ih.saturating_sub(2).max(1),
                                     );
                                     self.term_rects.push((block.id, r));
-                                    self.draw_term(r, &block, &theme, buf);
+                                    self.draw_term(r, &block, &theme, target);
                                 }
                             }
                             cy += ih + 1;
@@ -1360,6 +1425,45 @@ impl<P: TerminalProvider> Presenter<P> {
                 }
             }
             y += h + 1;
+        }
+
+        if let Some(off) = offscreen {
+            let scroll = self.slide_scroll;
+            // Blit the scrolled window into the box.
+            for row in 0..visible {
+                for cx in x..x + w {
+                    buf[(cx, box_y + row)] = off[(cx, scroll + row)].clone();
+                }
+            }
+            // Hit rects were recorded in offscreen coordinates;
+            // translate to the screen and clip to the box (dropping
+            // terminals scrolled fully out of view).
+            let mut i = rects_from;
+            while i < self.term_rects.len() {
+                let (_, r) = &mut self.term_rects[i];
+                let top = i32::from(box_y) + i32::from(r.y) - i32::from(scroll);
+                let clipped_top = top.max(i32::from(box_y));
+                let clipped_bot =
+                    (top + i32::from(r.height)).min(i32::from(box_y) + i32::from(visible));
+                if clipped_bot <= clipped_top {
+                    self.term_rects.remove(i);
+                } else {
+                    r.y = clipped_top as u16;
+                    r.height = (clipped_bot - clipped_top) as u16;
+                    i += 1;
+                }
+            }
+            // Corner markers say there's more; pgdn/pgup and the
+            // wheel reveal it.
+            let hint = Style::default().fg(theme.muted);
+            if scroll > 0 {
+                buf[(x + w - 1, box_y)].set_symbol("▲").set_style(hint);
+            }
+            if scroll < overflow {
+                buf[(x + w - 1, box_y + visible - 1)]
+                    .set_symbol("▼")
+                    .set_style(hint);
+            }
         }
     }
 
@@ -1661,6 +1765,7 @@ impl<P: TerminalProvider> Presenter<P> {
             row("↓/j  ↑/k", "deeper / shallower"),
             row("space, n", "next slide (depth-first)"),
             row("shift-space", "previous slide (also bksp, p)"),
+            row("pgdn/pgup", "scroll a tall slide, then advance"),
             row("g / G", "first / last column"),
             Line::default(),
         ];
@@ -2165,6 +2270,101 @@ mod tests {
         p.on_key(KeyPress::plain(Key::Char('t')));
         p.on_key(KeyPress::plain(Key::Char('y')));
         assert_eq!(p.focus, Some(0));
+    }
+
+    fn tall_deck() -> String {
+        let items: String = (0..40).map(|i| format!("- item{i}\n")).collect();
+        format!("# tall\n\n{items}---\n# after\n")
+    }
+
+    fn screen(p: &mut Presenter<impl TerminalProvider>, area: Rect) -> String {
+        let mut buf = Buffer::empty(area);
+        p.draw(area, &mut buf);
+        let mut s = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                s.push_str(buf[(x, y)].symbol());
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    #[test]
+    fn tall_slides_scroll_then_advance() {
+        let deck = crate::deck::parse(&tall_deck(), "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 40, 16);
+
+        let top = screen(&mut p, area);
+        assert!(top.contains("item0"), "top of slide missing:\n{top}");
+        assert!(!top.contains("item39"), "overflow visible at top:\n{top}");
+        assert!(top.contains('▼'), "no more-below marker:\n{top}");
+        assert!(!top.contains('▲'), "above marker at top:\n{top}");
+
+        // pgdn scrolls through the whole slide before advancing.
+        let mut pages = 0;
+        while p.position() == (0, 0) && pages < 50 {
+            p.on_key(KeyPress::plain(Key::PageDown));
+            let s = screen(&mut p, area);
+            if p.position() == (0, 0) && !s.contains('▼') {
+                assert!(s.contains("item39"), "bottom not reached:\n{s}");
+                assert!(s.contains('▲'), "no more-above marker:\n{s}");
+            }
+            pages += 1;
+        }
+        assert_eq!(p.position(), (1, 0), "pgdn never advanced");
+
+        // pgup from a fresh slide goes back; the scroll was reset.
+        p.on_key(KeyPress::plain(Key::PageUp));
+        assert_eq!(p.position(), (0, 0));
+        let s = screen(&mut p, area);
+        assert!(s.contains("item0"), "scroll not reset on return:\n{s}");
+    }
+
+    #[test]
+    fn wheel_scrolls_tall_slides_outside_terminals() {
+        let deck = crate::deck::parse(&tall_deck(), "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], NullProvider).unwrap();
+        let area = Rect::new(0, 0, 40, 16);
+        screen(&mut p, area);
+        p.on_mouse(Mouse {
+            x: 5,
+            y: 5,
+            action: MouseAction::ScrollDown,
+        });
+        let s = screen(&mut p, area);
+        // Three rows scrolled: the heading (and its padding) is gone.
+        assert!(!s.contains("tall"), "wheel did not scroll:\n{s}");
+        assert!(s.contains('▲'), "no above marker after wheel:\n{s}");
+    }
+
+    #[test]
+    fn scrolled_terminals_keep_honest_hit_rects() {
+        let items: String = (0..20).map(|i| format!("- item{i}\n")).collect();
+        let src = format!("{items}\n```terminal rows=5\nhtop\n```\n");
+        let deck = crate::deck::parse(&src, "t").unwrap();
+        let mut p = Presenter::new(deck, vec![], FakeTerms { resets: 0 }).unwrap();
+        let area = Rect::new(0, 0, 40, 12);
+
+        // At the top the terminal is scrolled out of view entirely.
+        screen(&mut p, area);
+        assert!(
+            p.term_rects.is_empty(),
+            "offscreen terminal still hit-testable: {:?}",
+            p.term_rects
+        );
+
+        // Scroll to the bottom: it's visible, clipped to the box, and
+        // clickable.
+        for _ in 0..10 {
+            p.on_key(KeyPress::plain(Key::PageDown));
+            screen(&mut p, area);
+        }
+        assert_eq!(p.term_rects.len(), 1, "terminal not hit-testable");
+        let (_, r) = p.term_rects[0];
+        assert!(r.y >= area.y && r.y + r.height < area.height);
+        assert!(p.terminal_at(r.x + 1, r.y + r.height / 2));
     }
 
     #[test]
