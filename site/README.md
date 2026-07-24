@@ -86,11 +86,40 @@ production, and once under the tag's branch alias (`v0.1.0` →
 forever.
 
 `scripts/build-site.sh` bakes the crate version into the footer's
-version picker and generates `versions.json` (all release tags plus the
-version being built, each mapped to its URL). The picker (`version.ts`)
-fetches the production copy of that manifest — CORS-opened via
-`src/_headers` so old branch-alias deployments can read it too — and
-jumps to the same path on whichever release you pick.
+version picker and generates `versions.json` (all release tags, plus
+any backfilled versions listed in `versions-known.txt`, plus the
+version being built, each mapped to its URL). The picker
+(`version.ts`) fetches the production copy of that manifest —
+CORS-opened via `src/_headers` so old branch-alias deployments can
+read it too — and jumps to the same path on whichever release you
+pick.
+
+Versioned docs only accumulate through that flow: the picker lists
+**git tags**, and each tag's docs exist only because the Release
+workflow deployed its branch alias. Site versions deployed without a
+tag (manual `wrangler` runs) are invisible to the picker.
+
+### Backfilling a version that predates tagging
+
+To preserve an old release's docs after the fact (e.g. 0.2.0, shipped
+before any `v*` tag existed) — without pushing an old tag, which would
+run that tag's own Release workflow:
+
+```sh
+git worktree add /tmp/deckhand-0.2.0 <the release's commit>
+(cd /tmp/deckhand-0.2.0 && ./scripts/build-site.sh)
+# deploy only the permanent alias; production stays untouched
+(cd /tmp/deckhand-0.2.0/site && bunx wrangler pages deploy _site \
+  --project-name deckhand-sh --branch v0.2.0 --commit-dirty=true)
+git worktree remove /tmp/deckhand-0.2.0
+```
+
+Then add `0.2.0` to `site/versions-known.txt` on main — the next
+production deploy's `versions.json` will list it. (Safety nets:
+`deploy-site.sh --alias-only` does an alias-only deploy of the
+current build, and its production step refuses tags older than the
+newest known `v*` tag, so a stray old-tag run can't clobber the live
+site.)
 
 One-time Cloudflare setup: create a custom API token scoped to
 **Account → Cloudflare Pages → Edit** only (don't use `wrangler login`

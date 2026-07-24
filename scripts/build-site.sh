@@ -27,15 +27,20 @@ bun run build:ts
 DECKHAND_VERSION="${_version}" bun run build:site
 
 # versions.json: the manifest the footer picker fetches — every release
-# tag plus the version being built, newest first. The newest entry
-# points at production; older ones at the Cloudflare Pages branch
-# aliases that deploy-site.sh publishes each release under.
+# tag, plus backfilled pre-tag versions from site/versions-known.txt,
+# plus the version being built, newest first. The newest entry points
+# at production; older ones at the Cloudflare Pages branch aliases
+# that deploy-site.sh publishes each release under.
 echo "== versions.json"
 _site_url="${DECKHAND_SITE_URL:-https://deckhand.sh}"
 _project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
+_known="${_site}/versions-known.txt"
 _versions="$(
   {
     git -C "${_root}" tag -l 'v*' | sed 's/^v//'
+    if [ -f "${_known}" ]; then
+      grep -v '^[[:space:]]*#' "${_known}" || true
+    fi
     echo "${_version}"
   } | grep -v '^$' | sort -Vru
 )"
