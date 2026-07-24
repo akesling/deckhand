@@ -148,6 +148,12 @@ pub struct TermSnapshot {
     pub data: Vec<u8>,
 }
 
+/// Bounds for a terminal block's fixed viewport height, shared by the
+/// single-file (`rows=N`) and manifest (`"rows": N`) parsers.
+pub(crate) const TERM_ROWS_MIN: u16 = 3;
+/// See [`TERM_ROWS_MIN`].
+pub(crate) const TERM_ROWS_MAX: u16 = 40;
+
 impl Deck {
     /// The slide at (column, depth). Panics if out of range; callers
     /// navigate via clamped coordinates.
@@ -794,7 +800,7 @@ fn parse_segments_at(
                         TermBlock {
                             id,
                             command: None,
-                            rows: rows.clamp(3, 40),
+                            rows: rows.clamp(TERM_ROWS_MIN, TERM_ROWS_MAX),
                             fill,
                             snapshot: None,
                         },

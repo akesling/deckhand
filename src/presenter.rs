@@ -545,6 +545,10 @@ pub struct Presenter<P: TerminalProvider> {
     status: Option<String>,
     jump_input: String,
     search_input: String,
+    /// Matches for the current `search_input`, recomputed on edits
+    /// (not per frame — the overlay redraws far more often than the
+    /// query changes).
+    search_cache: Vec<SearchMatch>,
     /// A disabled terminal awaiting the presenter's `y` to run.
     pending_enable: Option<usize>,
     /// Scroll offset into a slide taller than its box, in rows.
@@ -584,6 +588,7 @@ impl<P: TerminalProvider> Presenter<P> {
             status: None,
             jump_input: String::new(),
             search_input: String::new(),
+            search_cache: Vec::new(),
             pending_enable: None,
             slide_scroll: 0,
             slide_overflow: 0,
@@ -651,6 +656,11 @@ impl<P: TerminalProvider> Presenter<P> {
             let c = c.min(ncols - 1);
             let r = r.min(self.deck.columns[c].slides.len() - 1);
             self.mode = Mode::Overview { sel: (c, r) };
+        }
+        if let Mode::Search { .. } = self.mode {
+            // The open search is now over the new deck's content.
+            self.search_cache = self.search_matches();
+            self.mode = Mode::Search { sel: 0 };
         }
         self.jump_input.clear();
         self.pending_enable = None;
@@ -724,7 +734,7 @@ impl<P: TerminalProvider> Presenter<P> {
                 self.focus = None;
                 return;
             }
-            match self.provider.state(&self.block_by_id(id)) {
+            match self.block_state(id) {
                 TermState::Running { .. } => {}
                 _ => {
                     self.focus = None;
@@ -732,7 +742,7 @@ impl<P: TerminalProvider> Presenter<P> {
                 }
             }
             if key.shift {
-                let rows = self.block_by_id(id).rows;
+                let rows = self.block_by_id(id).map(|b| b.rows).unwrap_or(12);
                 match key.key {
                     Key::PageUp => return self.provider.scroll_page(id, true, rows),
                     Key::PageDown => return self.provider.scroll_page(id, false, rows),
@@ -755,19 +765,25 @@ impl<P: TerminalProvider> Presenter<P> {
         }
     }
 
-    fn block_by_id(&self, id: usize) -> TermBlock {
-        for column in &self.deck.columns {
-            for slide in &column.slides {
-                for seg in slide.leaf_segments() {
-                    if let Segment::Terminal(b) = seg
-                        && b.id == id
-                    {
-                        return b.clone();
-                    }
-                }
-            }
+    fn block_by_id(&self, id: usize) -> Option<&TermBlock> {
+        self.deck
+            .columns
+            .iter()
+            .flat_map(|c| &c.slides)
+            .flat_map(|s| s.leaf_segments())
+            .find_map(|seg| match seg {
+                Segment::Terminal(b) if b.id == id => Some(b),
+                _ => None,
+            })
+    }
+
+    /// Provider state for a terminal id; `Unavailable` when the id
+    /// isn't in the deck (focus racing a hot reload, defensively).
+    fn block_state(&self, id: usize) -> TermState {
+        match self.block_by_id(id) {
+            Some(block) => self.provider.state(block),
+            None => TermState::Unavailable,
         }
-        unreachable!("terminal id {id} not in deck")
     }
 
     fn on_key_slide(&mut self, key: KeyPress) {
@@ -815,6 +831,7 @@ impl<P: TerminalProvider> Presenter<P> {
             }
             Key::Char('/') => {
                 self.search_input.clear();
+                self.search_cache = self.search_matches();
                 self.mode = Mode::Search { sel: 0 };
             }
             Key::Char('?') => self.mode = Mode::Help,
@@ -879,7 +896,7 @@ impl<P: TerminalProvider> Presenter<P> {
         };
         self.selected.insert((self.col, self.row), id);
         // Unapproved blocks ask before running anything.
-        if self.provider.state(&self.block_by_id(id)) == TermState::Disabled {
+        if self.block_state(id) == TermState::Disabled {
             let command = self.block_label(id);
             self.pending_enable = Some(id);
             self.status = Some(format!(
@@ -891,10 +908,8 @@ impl<P: TerminalProvider> Presenter<P> {
     }
 
     fn block_label(&self, id: usize) -> String {
-        let block = self.block_by_id(id);
-        block
-            .command
-            .as_deref()
+        self.block_by_id(id)
+            .and_then(|b| b.command.as_deref())
             .and_then(|c| c.lines().next())
             .unwrap_or("shell")
             .to_string()
@@ -904,7 +919,7 @@ impl<P: TerminalProvider> Presenter<P> {
         let Some(id) = self.selected_terminal() else {
             return;
         };
-        match self.provider.state(&self.block_by_id(id)) {
+        match self.block_state(id) {
             TermState::Running { .. } | TermState::Exited | TermState::Failed(_) => {
                 self.provider.stop(id);
                 self.focus = None;
@@ -918,7 +933,7 @@ impl<P: TerminalProvider> Presenter<P> {
         let Some(id) = self.selected_terminal() else {
             return;
         };
-        match self.provider.state(&self.block_by_id(id)) {
+        match self.block_state(id) {
             TermState::Running { .. } | TermState::Exited | TermState::Failed(_) => {
                 self.provider.restart(&[id]);
                 self.status = Some(format!("restarted `{}`", self.block_label(id)));
@@ -988,14 +1003,14 @@ impl<P: TerminalProvider> Presenter<P> {
     }
 
     fn on_key_search(&mut self, key: KeyPress, sel: usize) {
-        let count = self.search_matches().len();
+        let count = self.search_cache.len();
         let clamp = |s: usize| s.min(count.saturating_sub(1));
         match key.key {
             Key::Char('c') if key.ctrl => self.quit = true,
             Key::Esc => self.mode = Mode::Slide,
             Key::Enter => {
                 if count > 0 {
-                    let (c, r) = self.search_matches()[clamp(sel)].pos;
+                    let (c, r) = self.search_cache[clamp(sel)].pos;
                     self.mode = Mode::Slide;
                     self.goto(c, r);
                 }
@@ -1004,6 +1019,7 @@ impl<P: TerminalProvider> Presenter<P> {
                 if self.search_input.pop().is_none() {
                     self.mode = Mode::Slide;
                 } else {
+                    self.search_cache = self.search_matches();
                     self.mode = Mode::Search { sel: 0 };
                 }
             }
@@ -1034,6 +1050,7 @@ impl<P: TerminalProvider> Presenter<P> {
             }
             Key::Char(ch) if !key.ctrl && !key.alt => {
                 self.search_input.push(ch);
+                self.search_cache = self.search_matches();
                 self.mode = Mode::Search { sel: 0 };
             }
             _ => {}
@@ -1131,7 +1148,7 @@ impl<P: TerminalProvider> Presenter<P> {
                     match term_at(&self.term_rects) {
                         Some(id) => {
                             self.selected.insert((self.col, self.row), id);
-                            if self.provider.state(&self.block_by_id(id)) == TermState::Disabled {
+                            if self.block_state(id) == TermState::Disabled {
                                 let command = self.block_label(id);
                                 self.pending_enable = Some(id);
                                 self.status = Some(format!(
@@ -1823,7 +1840,7 @@ impl<P: TerminalProvider> Presenter<P> {
     }
 
     fn draw_search(&self, area: Rect, buf: &mut Buffer, sel: usize) {
-        let matches = self.search_matches();
+        let matches = &self.search_cache;
         let sel = sel.min(matches.len().saturating_sub(1));
         let dim = Style::default().fg(self.theme.muted);
         let accent = Style::default()

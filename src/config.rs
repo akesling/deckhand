@@ -314,7 +314,10 @@ fn term_segment(term: &TermConfig, next_term_id: &mut usize) -> Segment {
     Segment::Terminal(TermBlock {
         id,
         command: term.command.clone(),
-        rows: term.rows.unwrap_or(12).clamp(3, 40),
+        rows: term
+            .rows
+            .unwrap_or(12)
+            .clamp(crate::deck::TERM_ROWS_MIN, crate::deck::TERM_ROWS_MAX),
         fill: term.rows.is_none(),
         snapshot: None,
     })
