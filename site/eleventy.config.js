@@ -1,7 +1,13 @@
+import { HtmlBasePlugin } from "@11ty/eleventy";
+
 export default function (eleventyConfig) {
   // The release version, for the footer picker (scripts/build-site.sh
   // sets it from Cargo.toml; `bun run dev` builds show "dev").
   eleventyConfig.addGlobalData("version", process.env.DECKHAND_VERSION ?? "dev");
+  // Versioned-docs snapshots build with a path prefix (/v0.3.0/) so a
+  // release's site is self-consistent when served under that path on
+  // the production domain; the plugin rewrites absolute URLs in HTML.
+  eleventyConfig.addPlugin(HtmlBasePlugin);
   // Decks are data the demo fetches, not pages to template.
   eleventyConfig.ignores.add("src/decks/**");
   // The markdown-sourced content pages, in reading order — mirrored as
@@ -32,6 +38,7 @@ export default function (eleventyConfig) {
       output: "_site",
       includes: "_includes",
     },
+    pathPrefix: process.env.DECKHAND_PATH_PREFIX ?? "/",
     markdownTemplateEngine: "njk",
     htmlTemplateEngine: "njk",
   };

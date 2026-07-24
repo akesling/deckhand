@@ -7,7 +7,9 @@ async function main() {
   if (!el) return;
   try {
     const [source] = await Promise.all([
-      fetch("/decks/demo.md").then((r) => r.text()),
+      // Relative to this bundle, so versioned snapshots show their
+      // own demo deck.
+      fetch(new URL("../decks/demo.md", import.meta.url)).then((r) => r.text()),
       loadWasm(),
     ]);
     const onUpdate = bindCaption(document.getElementById("demo-caption"));

@@ -3,8 +3,9 @@
 # picker fetches — and validate it before it can reach a deploy.
 # Entries: every v* release tag, plus backfilled pre-tag versions from
 # site/versions-known.txt, plus the crate version being built, newest
-# first. The newest entry points at production; older ones at the
-# permanent Cloudflare Pages branch alias each release deploys under.
+# first. All URLs are same-origin paths: the newest version is the
+# site root (/), every other version its /vX.Y.Z/ snapshot, which
+# deploy-site.sh assembles from the site-archive branch.
 #
 #   scripts/gen-versions.sh <output-file>
 set -euo pipefail
@@ -19,8 +20,6 @@ if [ -z "${_out}" ]; then
 fi
 
 _version="$(grep -m1 '^version' "${_root}/Cargo.toml" | cut -d'"' -f2)"
-_site_url="${DECKHAND_SITE_URL:-https://deckhand.sh}"
-_project="${CLOUDFLARE_PAGES_PROJECT:-deckhand-sh}"
 _known="${_root}/site/versions-known.txt"
 
 _versions="$(
@@ -43,13 +42,9 @@ _latest="$(echo "${_versions}" | head -n1)"
       printf ',\n'
     fi
     if [ "${_v}" = "${_latest}" ]; then
-      _url="${_site_url}"
+      _url="/"
     else
-      # Cloudflare's branch-alias rule: lowercase, non-alphanumerics
-      # collapsed to dashes, 28 chars max (mirrored in deploy-site.sh).
-      _alias="$(printf 'v%s' "${_v}" | tr '[:upper:]' '[:lower:]' \
-        | sed 's/[^a-z0-9]/-/g' | cut -c1-28)"
-      _url="https://${_alias}.${_project}.pages.dev"
+      _url="/v${_v}/"
     fi
     printf '    { "version": "%s", "url": "%s" }' "${_v}" "${_url}"
   done <<<"${_versions}"
@@ -80,7 +75,8 @@ if command -v bun >/dev/null; then
     for (const k of known)
       if (!versions.includes(k)) fail(`missing known version ${k}`);
     for (const v of m.versions)
-      if (!/^https:\/\/[a-z0-9.-]+$/.test(v.url)) fail(`bad url ${v.url}`);
+      if (!/^\/$|^\/v[^/]+\/$/.test(v.url)) fail(`bad url ${v.url}`);
+    if (m.versions[0].url !== "/") fail("newest entry must be the site root");
     console.log(`   versions.json ok: ${versions.join(", ")}`);
   '
 else

@@ -10,7 +10,11 @@ let wasmReady: Promise<unknown> | null = null;
 /** Load the wasm module once, shared across mounts. */
 export function loadWasm(): Promise<unknown> {
   if (!wasmReady) {
-    wasmReady = init({ module_or_path: "/wasm/deckhand_bg.wasm" });
+    // Relative to this bundle ({prefix}/js/…), so versioned snapshots
+    // served under /vX.Y.Z/ load their own wasm, not the latest one.
+    wasmReady = init({
+      module_or_path: new URL("../wasm/deckhand_bg.wasm", import.meta.url),
+    });
   }
   return wasmReady;
 }

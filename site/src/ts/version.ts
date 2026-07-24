@@ -1,15 +1,12 @@
-// Footer version picker. Each deployment is built knowing only its own
-// version; the production site's versions.json (CORS-open, so the
-// pages.dev branch aliases can read it too) lists every release.
-// Picking one jumps to the same path on that release's deployment.
-
-// Local previews (a static server over site/_site) read their own
-// freshly generated manifest, so the picker is verifiable without
-// deploying; deployed pages — branch aliases included — read
-// production's, which lists every release.
-const VERSIONS_URL = ["localhost", "127.0.0.1"].includes(location.hostname)
-  ? "/versions.json"
-  : "https://deckhand.sh/versions.json";
+// Footer version picker. Versioned snapshots are served under
+// /vX.Y.Z/ on the same origin as the latest site (/), so every page —
+// any version, localhost previews of an assembled _site included —
+// reads the one manifest at the site root and jumps by swapping the
+// version prefix on the current path. No cross-origin, no
+// implementation-detail hosts.
+const VERSIONS_URL = "/versions.json";
+// The prefix a versioned snapshot is served under; absent on latest.
+const VERSION_PREFIX = /^\/v\d[^/]*(?=\/)/;
 
 interface VersionEntry {
   version: string;
@@ -53,7 +50,9 @@ async function main() {
 
   picker.addEventListener("change", () => {
     if (!picker.value) return;
-    location.href = new URL(location.pathname, picker.value).toString();
+    // Same page, other version: swap the version prefix on the path.
+    const page = location.pathname.replace(VERSION_PREFIX, "").replace(/^\//, "");
+    location.href = new URL(page, new URL(picker.value, location.origin)).toString();
   });
 }
 

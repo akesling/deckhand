@@ -78,58 +78,61 @@ defined in `eleventy.config.js`).
 
 ## Deploy & versioning
 
+Versioned docs live under **stable, same-origin paths**: the latest
+release at `deckhand.sh/`, every other release at
+`deckhand.sh/vX.Y.Z/`. No provider-specific hosts in any user-facing
+URL. Snapshots are plain directories on the `site-archive` git branch
+— first-class, inspectable state.
+
 Releases (tag pushes, cut by `scripts/release.sh`) trigger the Release
-workflow, which runs `scripts/deploy-site.sh`: a **clean, validated
-build** (`scripts/build-site.sh` — a deploy can never ship a stale
-`_site/`), then `wrangler pages deploy` to the Cloudflare Pages
-project — once to production, and once under the tag's branch alias
-(`v0.1.0` → `v0-1-0.deckhand-sh.pages.dev`), which keeps that
-release's site up forever.
+workflow, which runs `scripts/deploy-site.sh` — always a clean cycle,
+never a stale artifact:
 
-Everything a deploy produces is verifiable locally first:
-`scripts/check.sh` generates and validates `versions.json` (via
-`scripts/gen-versions.sh` — completeness against tags and
-`versions-known.txt` is asserted, not eyeballed), and serving a built
-`site/_site` on localhost shows the real footer picker reading the
-local manifest.
+1. build the release's snapshot with 11ty's `pathPrefix`
+   (`HtmlBasePlugin` rewrites URLs so the site is self-consistent
+   under `/vX.Y.Z/`) and commit it to `site-archive`;
+2. build the latest site for the root;
+3. assemble every archived version under its `/vX.Y.Z/` path;
+4. verify every version `versions.json` lists is actually present —
+   the deploy refuses to publish a picker that lies;
+5. publish to production. Only the newest tag may touch production —
+   an older tag's deploy refreshes its snapshot and stops.
 
-`scripts/build-site.sh` bakes the crate version into the footer's
-version picker and generates `versions.json` (all release tags, plus
-any backfilled versions listed in `versions-known.txt`, plus the
-version being built, each mapped to its URL). The picker
-(`version.ts`) fetches the production copy of that manifest —
-CORS-opened via `src/_headers` so old branch-alias deployments can
-read it too — and jumps to the same path on whichever release you
-pick.
-
-Versioned docs only accumulate through that flow: the picker lists
-**git tags**, and each tag's docs exist only because the Release
-workflow deployed its branch alias. Site versions deployed without a
-tag (manual `wrangler` runs) are invisible to the picker.
+`scripts/gen-versions.sh` builds and validates `versions.json` (all
+release tags + `versions-known.txt` + the version being built, all
+mapped to `/` or `/vX.Y.Z/`); `scripts/check.sh` runs that
+generation-plus-validation on every check, so the manifest is
+verifiable without deploying. The footer picker (`version.ts`)
+fetches `/versions.json` — same origin everywhere, localhost previews
+of an assembled `_site` included — and switches versions by swapping
+the `/vX.Y.Z/` prefix on the current path.
 
 ### Backfilling a version that predates tagging
 
-0.1.0 and 0.2.0 were deployed manually (their `v0-1-0`/`v0-2-0`
-aliases exist), so they're listed via `versions-known.txt` directly.
-If an old version's alias is ever *missing*, rebuild and deploy it
-after the fact — without pushing an old tag, which would run that
-tag's own Release workflow:
+0.1.0 and 0.2.0 were deployed before tagging existed; their content
+survives on old `*.pages.dev` branch-alias deployments. To bring one
+under `deckhand.sh/vX.Y.Z/`: mirror it, rewrite its root-absolute
+asset paths for the prefix, and commit it to `site-archive`:
 
 ```sh
-git worktree add /tmp/deckhand-0.2.0 <the release's commit>
-(cd /tmp/deckhand-0.2.0 && ./scripts/build-site.sh)
-# deploy only the permanent alias; production stays untouched
-(cd /tmp/deckhand-0.2.0/site && bunx wrangler pages deploy _site \
-  --project-name deckhand-sh --branch v0.2.0 --commit-dirty=true)
-git worktree remove /tmp/deckhand-0.2.0
+git worktree add /tmp/archive site-archive
+wget --mirror --no-host-directories \
+  https://v0-2-0.deckhand-sh.pages.dev/ -P /tmp/archive/v0.2.0
+find /tmp/archive/v0.2.0 \( -name '*.html' -o -name '*.js' \) \
+  -exec sed -i '' \
+    -e 's|href="/|href="/v0.2.0/|g' \
+    -e 's|src="/|src="/v0.2.0/|g' \
+    -e 's|"/wasm/|"/v0.2.0/wasm/|g' \
+    -e 's|"/decks/|"/v0.2.0/decks/|g' {} +
+(cd /tmp/archive && git add v0.2.0 && git commit -m "archive v0.2.0" \
+  && git push origin HEAD:site-archive)
+git worktree remove /tmp/archive
 ```
 
-Then add `0.2.0` to `site/versions-known.txt` on main — the next
-production deploy's `versions.json` will list it. (Safety nets:
-`deploy-site.sh --alias-only` does an alias-only deploy of the
-current build, and its production step refuses tags older than the
-newest known `v*` tag, so a stray old-tag run can't clobber the live
-site.)
+Then add `0.2.0` to `site/versions-known.txt` on main and redeploy.
+Caveat: those old snapshots ship their era's picker script, which
+lists versions but may not navigate — the content is what's being
+preserved.
 
 One-time Cloudflare setup: create a custom API token scoped to
 **Account → Cloudflare Pages → Edit** only (don't use `wrangler login`
