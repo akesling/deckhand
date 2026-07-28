@@ -53,7 +53,7 @@ reqwest = "0.12"
 tokio = { version = "1", features = ["rt"] }
 
 # `pdf` feature only: `deckhand compile -o talk.pdf`.
-miniz_oxide = { version = "0.8", optional = true }
+miniz_oxide = { version = "0.9", optional = true }
 pdf-writer = { version = "0.13", optional = true }
 subsetter = { version = "0.2", optional = true }
 ttf-parser = { version = "0.25", optional = true }
